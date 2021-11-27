@@ -12,8 +12,7 @@ import Foundation
 // First, umd.io (https://api.umd.io/v1). We use this API in two ways.
 
 // 1: /courses/<course_id>
-// This gives us a host of data points on <course_id>, but it's most important functions are 1) letting us
-// know if it's actually a real class (no 404 response) and 2) showing us what sections are being offered for the class
+// This gives us a host of data points on <course_id>, but it's most important functions are 1) letting us know if it's actually a real class (no 404 response) and 2) showing us what sections are being offered for the class
 
 struct CourseResponse : Codable {
     let course_id : String
@@ -42,8 +41,7 @@ struct Relationships : Codable {
 }
 
 // 2: /courses/sections/<section_id>
-// The first API call (/courses/<course_id>) gives us access to an array called "sections". Each entry of this array is a diff section_id
-// that we can pass into this API call, which gives us times, profs, etc -- all material we need to build the schedule
+// The first API call (/courses/<course_id>) gives us access to an array called "sections". Each entry of this array is a diff section_id that we can pass into this API call, which gives us times, profs, etc -- all material we need to build the schedule
 
 struct SectionResponse : Codable {
     let course : String
@@ -78,8 +76,7 @@ struct ProfResponse : Codable {
     let average_rating : Float
 }
 
-// Getting class average GPA's is a bit more involved. The more direct, generalized, way is to just get the avg. GPA
-// for a given course_id, like so:
+// Getting class average GPA's is a bit more involved. The more direct, generalized, way is to just get the avg. GPA for a given course_id, like so:
 
 // 2.1: /course?name=<course_id>
 // * NOTE: <course_id> here is the same format is it was for the umd.io api (e.g. "cmsc131")
@@ -95,14 +92,11 @@ struct CourseGPAResponse : Codable {
     let average_gpa : Float
 }
 
-// Ideally, we'd like to get avg. GPA's for the class when the prof in question was teaching it (so it's most accurate -- for example,
-// if Class A has two profs, Bob and Alice, and only Bob is teaching this sem, we only want the avg. GPA for when Bob has taught Class A).
+// Ideally, we'd like to get avg. GPA's for the class when the prof in question was teaching it (so it's most accurate -- for example, if Class A has two profs, Bob and Alice, and only Bob is teaching this sem, we only want the avg. GPA for when Bob has taught Class A).
 
 // 2.2: /grades?course=<course_id>&professor=<prof_name>
-// * NOTE: for now, we won't implement this because the response is a massive array of every single recorded section <prof_name> has taught
-// of <course_id>, and we doubt that we'll get a significant difference in avg. gpa (not worth the computational load)
-// Each entry lists how many individiduals got an A+, A, A-, ... , D-, F. Computing gpa for this & then averaging it is just overkill
-// (at least as of 11/26/21)
+// * NOTE: for now, we won't implement this because the response is a massive array of every single recorded section <prof_name> has taught of <course_id>, and we doubt that we'll get a significant difference in avg. gpa (not worth the computational load)
+// Each entry lists how many individiduals got an A+, A, A-, ... , D-, F. Computing gpa for this & then averaging it is just overkill (at least as of 11/26/21)
 
 // ************************************************************************************************* //
 
@@ -126,8 +120,7 @@ struct Course {
     var sections : [Section]
 }
 
-// Our class holds only two instance variables: courses (the course list that a student is adding/removing to in the UI)
-// and schedules (the result of hitting the "GO" button -- all the possible schedules)
+// Our class holds only two instance variables: courses (the course list that a student is adding/removing to in the UI) and schedules (the result of hitting the "GO" button -- all the possible schedules)
 
 // Note that schedules are not collections of courses, rather they are collections of specific sections.
 // This is an important distinction moving forward
@@ -183,7 +176,7 @@ class ScheduleBuilder : ObservableObject {
         var sect_res : [SectionResponse]? = nil
         URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
             guard let data = data, error == nil else {
-                print("No course found!")
+                print("No section found!")
                 return
             }
             var res : [SectionResponse]?
@@ -211,7 +204,7 @@ class ScheduleBuilder : ObservableObject {
         
         URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
             guard let data = data, error == nil else {
-                print("No course found!")
+                print("No prof found!")
                 return
             }
             var res : ProfResponse?
