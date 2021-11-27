@@ -16,24 +16,45 @@ struct ContentView: View {
         animation: .default)
     private var items: FetchedResults<Item>
 
+    @EnvironmentObject var sb : ScheduleBuilder
+    
+    func test() {
+    }
+    
     var body: some View {
-        ZStack{
+        
+        ZStack {
             // splash page
+            
             VStack {}
 
             TabView {
                 VStack {
                     Text("Hello Terp!")
                         .font(.largeTitle)
-                        .fontWeight(.bold)
+                        .fontWeight(.black)
                         .padding(.trailing,160)
-                    Text("Welcome to Jupiter, a lightweight schedule builder alternative to Venus").padding([.top, .leading, .trailing])
-                    Text("Our predicitive ML ranking model (powered by CMSC422) organizes classes based on the likelihood that they give you a high GPA.  ").padding([.top, .leading, .trailing])
+                    Text("Welcome to Jupiter, a lightweight schedule builder alternative to Venus\n\nOur predicitive ML ranking model (powered by CMSC422) organizes classes based on the likelihood that they give you a high GPA.").fontWeight(.light).padding([.top, .leading, .trailing], 22.5)
+                    
+                    Spacer()
+                        .frame(height: 300.0)
                     
                 }.tabItem {Text("ABOUT")}
-                .frame(width: .infinity, height: .infinity, alignment: .center)
                 
-                VStack {}.tabItem { Text("BUILD") }
+                VStack {
+                    
+                    Button(action:test) {
+                        Text("Test")
+                            .font(.headline)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20.0)
+                                    .stroke()
+                                    .frame(width: 50, height: 30, alignment: .center)
+                            )
+                    }.padding(.top, 50.0)
+                    
+                
+                }.tabItem { Text("BUILD") }
                 
                 VStack {
                     List {

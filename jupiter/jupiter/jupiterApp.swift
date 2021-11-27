@@ -10,11 +10,12 @@ import SwiftUI
 @main
 struct jupiterApp: App {
     let persistenceController = PersistenceController.shared
-
+    @StateObject var sb = ScheduleBuilder()
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                .environmentObject(sb)
         }
     }
 }

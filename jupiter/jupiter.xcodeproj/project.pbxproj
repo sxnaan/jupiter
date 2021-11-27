@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3D3A02D727517ED90024AF98 /* model.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3A02D627517ED90024AF98 /* model.swift */; };
 		3DE2895F274F0DA700C5DC4B /* jupiterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE2895E274F0DA700C5DC4B /* jupiterApp.swift */; };
 		3DE28961274F0DA700C5DC4B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DE28960274F0DA700C5DC4B /* ContentView.swift */; };
 		3DE28963274F0DAA00C5DC4B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3DE28962274F0DAA00C5DC4B /* Assets.xcassets */; };
@@ -16,6 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		3D3A02D627517ED90024AF98 /* model.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = model.swift; sourceTree = "<group>"; };
 		3DE2895B274F0DA700C5DC4B /* jupiter.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = jupiter.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3DE2895E274F0DA700C5DC4B /* jupiterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = jupiterApp.swift; sourceTree = "<group>"; };
 		3DE28960274F0DA700C5DC4B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -56,6 +58,7 @@
 		3DE2895D274F0DA700C5DC4B /* jupiter */ = {
 			isa = PBXGroup;
 			children = (
+				3D3A02D627517ED90024AF98 /* model.swift */,
 				3DE2895E274F0DA700C5DC4B /* jupiterApp.swift */,
 				3DE28960274F0DA700C5DC4B /* ContentView.swift */,
 				3DE28962274F0DAA00C5DC4B /* Assets.xcassets */,
@@ -144,6 +147,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3D3A02D727517ED90024AF98 /* model.swift in Sources */,
 				3DE28968274F0DAA00C5DC4B /* Persistence.swift in Sources */,
 				3DE28961274F0DA700C5DC4B /* ContentView.swift in Sources */,
 				3DE2895F274F0DA700C5DC4B /* jupiterApp.swift in Sources */,
