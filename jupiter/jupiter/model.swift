@@ -128,8 +128,24 @@ struct Course : Hashable {
     static func == (lhs: Course, rhs: Course) -> Bool {
         return lhs.course_id == rhs.course_id
     }
-    
     var course_id : String
+    var course_name : String
+    var sections : [Section]
+}
+
+// maybe use this wrapper struct (currently we are not)
+struct Schedule : Hashable {
+    static func == (lhs: Schedule, rhs: Schedule) -> Bool {
+        let num_sections = lhs.sections.count
+        for i in 0..<num_sections {
+            if lhs.sections[i].section_id != rhs.sections[i].section_id {
+                return false
+            }
+        }
+        return true
+    }
+    var rank : Int
+    var score : Float
     var sections : [Section]
 }
 
@@ -143,7 +159,7 @@ class ScheduleBuilder : ObservableObject {
     let pt_url = "https://api.planetterp.com/v1/"
 
     @Published var courses : [Course]
-    @Published var schedules : [[Section]]
+    @Published var schedules : [Schedule]
     
     init() {
         courses = []
@@ -160,7 +176,8 @@ class ScheduleBuilder : ObservableObject {
         schedules = []
     }
     
-    // GET course
+    // GET course, returns the full JSON representation of a course outlined on lines 17-41
+    // TO-DO: set a diff return type for failure cases
     func get_course(_ course_id : String) -> CourseResponse {
         let url = "\(tstdo_url)courses/\(course_id)"
         let semaphore = DispatchSemaphore(value: 0)
@@ -193,7 +210,8 @@ class ScheduleBuilder : ObservableObject {
         return course_res![0]
     }
     
-    // GET section
+    // GET section, returns the full JSON representation of a section outlined on lines 46-69
+    // TO-DO: set a diff return type for failure cases
     func get_section(_ section_id : String) -> SectionResponse  {
         let url = "\(tstdo_url)courses/sections/\(section_id)"
         let semaphore = DispatchSemaphore(value: 0)
@@ -226,7 +244,8 @@ class ScheduleBuilder : ObservableObject {
         return section_res![0]
     }
     
-    // GET prof rating
+    // GET prof rating, returns Float representation of prof_name's rating if found
+    // TO-DO: set a diff return type for failure cases
     func get_prof(_ prof_name : String) -> Float {
         // we need to replace space with %20 for URL to work
         let sanitized_name = prof_name.replacingOccurrences(of: " ", with: "%20")
@@ -262,7 +281,8 @@ class ScheduleBuilder : ObservableObject {
         return prof_rating
     }
     
-    // GET gpa
+    // GET gpa, returns Float representation of course_id's GPA if found
+    // TO-DO: set a diff return type for failure cases
     func get_gpa(_ course_id : String) -> Float {
         let url = "\(pt_url)course?name=\(course_id)"
         
@@ -298,6 +318,7 @@ class ScheduleBuilder : ObservableObject {
     }
     
     // use the 4 methods above to build the Section and Course structs
+    // Returns the course, TO-DO: set a diff return type for failure cases
     func build_course(_ course_id : String) -> Course {
         let course = get_course(course_id)
         var sections : [Section] = []
@@ -316,14 +337,15 @@ class ScheduleBuilder : ObservableObject {
             sections.append(Section(course_id: course.course_id, course_name: course.name, section_id: section_id, prof: section.instructors, prof_rating: avg_rating, avg_gpa: get_gpa(course_id), open_seats: Int(section.open_seats)!, waitlist: Int(section.waitlist)!, credits: Int(course.credits)!, times: section.meetings))
         }
         
-        return Course(course_id: course.course_id, sections: sections)
+        return Course(course_id: course.course_id, course_name: course.name, sections: sections)
     }
     
     // This is triggered every time a student picks a new course to add
+    // Returns true if course was successfully added, else false
     func add_course(_ course_id : String) -> Bool {
         // first make sure that the course isn't already in the course list
         for c in courses {
-            if c.course_id == course_id {
+            if c.course_id == course_id.uppercased() {
                 return false
             }
         }
@@ -336,19 +358,11 @@ class ScheduleBuilder : ObservableObject {
     }
     
     // This is triggered every time a student removes a course from their course-list
-    func remove_course(_ course_id : String) -> Bool {
-        let len = courses.count
+    func remove_course(_ course_id : String) {
         courses = courses.filter {$0.course_id != course_id}
-        
-        if courses.count == len {
-            return false
-            // nothing was removed bc course wasn't in courses
-        }
-        
-        return true
     }
     
-    // Prints out the course-list
+    // Prints out the course-list -- for testing purposes
     func print_courses() {
         for course in self.courses {
             print(course)
@@ -356,35 +370,45 @@ class ScheduleBuilder : ObservableObject {
         print("")
     }
     
+    // ******* TO-DO: IMPLEMENT ********* //
     // Helper method to make sure any schedule our algo puts together is structurally valid
-    func time_conflict(_ schedule : [Section]) -> Bool {
+    // Returns true if there is a time conflict, else false
+    func time_conflict(_ schedule : Schedule) -> Bool {
         // iterate through sections in the provided list, if there is a time conflict get rid of it
         // we want to check all pairs of sections in the schedules (O(n^2))
         return false
     }
     
+    // ******* TO-DO: IMPLEMENT ********* //
     // For any given schedule, use prof ratings + avg gpa of each section to score
     // Weigh scores by credits (i.e. if a 1 credit class has a bad prof, it matters less than if a 4 credit class has a bad prof)
-    func get_score(schedule : [Section]) -> Float {
+    func get_score(schedule : Schedule) -> Float {
         return 0
     }
     
     // Generate all combos of schedules for the courselist (self.courses)
-    func build_schedules() -> [[Section]] {
+    func build_schedules() {
         // combine all combos of sections of the classes in the <courses> instance variable
         
         // first we need to reset schedules in case it was called earlier
         reset_schedules()
         
+        
+        let default_rank : Int = -1
+        let default_score : Float = -1
         let num_courses = courses.count
         
         switch num_courses {
         case 1:
-            schedules.append(courses[0].sections)
+            for s in courses[0].sections {
+                let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s])
+                schedules.append(schedule)
+            }
+            
         case 2:
             for s_0 in courses[0].sections {
                 for s_1 in courses[1].sections {
-                    let schedule : [Section] = [s_0, s_1]
+                    let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1])
                     if !time_conflict(schedule) {
                         schedules.append(schedule)
                     }
@@ -394,7 +418,7 @@ class ScheduleBuilder : ObservableObject {
             for s_0 in courses[0].sections {
                 for s_1 in courses[1].sections {
                     for s_2 in courses[2].sections {
-                        let schedule : [Section] = [s_0, s_1, s_2]
+                        let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1, s_2])
                         if !time_conflict(schedule) {
                             schedules.append(schedule)
                         }                    }
@@ -405,7 +429,7 @@ class ScheduleBuilder : ObservableObject {
                 for s_1 in courses[1].sections {
                     for s_2 in courses[2].sections {
                         for s_3 in courses[3].sections {
-                            let schedule : [Section] = [s_0, s_1, s_2, s_3]
+                            let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1, s_2, s_3])
                             if !time_conflict(schedule) {
                                 schedules.append(schedule)
                             }                        }
@@ -418,7 +442,7 @@ class ScheduleBuilder : ObservableObject {
                     for s_2 in courses[2].sections {
                         for s_3 in courses[3].sections {
                             for s_4 in courses[4].sections {
-                                let schedule : [Section] = [s_0, s_1, s_2, s_3, s_4]
+                                let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1, s_2, s_3, s_4])
                                 if !time_conflict(schedule) {
                                     schedules.append(schedule)
                                 }                            }
@@ -434,7 +458,7 @@ class ScheduleBuilder : ObservableObject {
                         for s_3 in courses[3].sections {
                             for s_4 in courses[4].sections {
                                 for s_5 in courses[5].sections {
-                                    let schedule : [Section] = [s_0, s_1, s_2, s_3, s_4, s_5]
+                                    let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1,s_2,s_3,s_4,s_5])
                                     if !time_conflict(schedule) {
                                         schedules.append(schedule)
                                     }                                }
@@ -444,16 +468,25 @@ class ScheduleBuilder : ObservableObject {
                 }
             }
         default:
+            // if they choose more than 7 classes, it becomes O(n^7), where n is the avg number of sections per course
             schedules = []
         }
         
+        // ******* TO-DO: IMPLEMENT ********* //
         // make sure to sort schedules by score (ML)
-        // for each
+        // for schedule in schedules {
+        //     schedule.score = get_score(schedule)
+        // }
+        // schedules.sort(by:score)
         
-        return schedules
+        // rank after sorting
+        let num_schedules = schedules.count
+        for i in 0..<num_schedules {
+            schedules[i].rank = i+1
+        }
     }
     
-    // Print all the schedules we generated
+    // Print all the schedules we generated (for testing)
     func print_schedules() {
         print("You selected the following courses:")
         for course in courses {
@@ -463,11 +496,23 @@ class ScheduleBuilder : ObservableObject {
         
         print("\(schedules.count) Schedules Generated")
         for schedule in schedules {
-            for section in schedule {
+            for section in schedule.sections {
                 print(section.section_id, section.times[0].days, section.times[0].start_time, section.times[0].end_time)
             }
             print("")
         }
+    }
+    
+    // ******* TO-DO: IMPLEMENT ********* //
+    // add schedule to core data
+    func save() {
+        
+    }
+    
+    // ******* TO-DO: IMPLEMENT ********* //
+    // add schedule to calendar
+    func add_to_calendar() {
+        
     }
     
 }

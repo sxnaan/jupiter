@@ -29,14 +29,29 @@ struct ContentView: View {
         sb.remove_course(course_id)
     }
     
-    func print() {
+    func build() {
         sb.build_schedules()
-        sb.print_schedules()
+        // sb.print_schedules() -- this was only needed for testing
+        selection = 2
     }
     
     func reset() {
         sb.reset_courses()
+        sb.reset_schedules()
     }
+    
+    // ******* TO-DO: IMPLEMENT ********* //
+    // saves the selected schedule to core-data
+    func save() {
+        
+    }
+    
+    // ******* TO-DO: IMPLEMENT ********* //
+    // adds the selected schedule to a calendar
+    func add_to_calendar() {
+        
+    }
+    
     
     var body: some View {
         
@@ -78,7 +93,7 @@ struct ContentView: View {
                          .padding([.top,.bottom], 20.0)
                         
                         HStack {
-                            Button(action:print) {
+                            Button(action:build) {
                                 Text("BUILD")
                                     .font(.headline)
                                     .background(
@@ -126,11 +141,73 @@ struct ContentView: View {
                 
                 VStack {
                     ScrollView {
-                        Text("You chose the following classes:\n\nHere are your schedules")
+                        Spacer(minLength: 25)
+                        
+                        if(sb.schedules.count > 0){
+                            Text("YOU CHOSE THE FOLLOWING COURSES")
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.blue)
+                    
+                            VStack(alignment: .leading) {
+                                ForEach(sb.courses, id: \.self) {course in
+                                    HStack (alignment: .top){
+                                        Text("\(course.course_id): ").fontWeight(/*@START_MENU_TOKEN@*/.bold/*@END_MENU_TOKEN@*/)
+                                        Text("\(course.course_name)").fontWeight(.light)
+                                    }
+                                }
+                            }.padding()
+                        
+                            Spacer(minLength: 25)
+                            
+                            Text("WE BUILT THE FOLLOWING SCHEDULES")
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                                .foregroundColor(.blue)
+
+                            VStack(alignment: .leading) {
+                                ForEach(sb.schedules, id: \.self) { schedule in
+                                    // this is one schedule
+                                    VStack(alignment: .leading) {
+                                        Text("\(schedule.rank).").font(.title)
+                                        ForEach(schedule.sections, id: \.self) { section in
+                                            HStack(alignment: .top){
+                                                Text("\(section.section_id)").fontWeight(/*@START_MENU_TOKEN@*/.bold/*@END_MENU_TOKEN@*/)
+                                                VStack(alignment: .leading){
+                                                    ForEach(section.times, id: \.self) { meeting in
+                                                        Text("\(meeting.days) \(meeting.start_time) \(meeting.end_time)").fontWeight(.light)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Spacer()
+                                        HStack {
+                                            HStack {
+                                                Image(systemName: "bookmark").foregroundColor(.black)
+                                                Text("Save")
+                                            }.padding(.trailing, 50)
+                                            HStack {
+                                                Image(systemName: "calendar.badge.plus").foregroundColor(.black)
+                                                Text("Add to Calendar")
+                                            }
+                                        }
+                                    }.padding()
+                                     .background(RoundedRectangle(cornerRadius: 20.0)
+                                                    .stroke())
+                                    Spacer(minLength: 20)
+                                }
+                            }
+                        } else {
+                            Spacer(minLength: 200)
+                            Text("Nothing to see here yet... go build a schedule or two!")
+                                .font(.largeTitle)
+                                .fontWeight(.black)
+                                .multilineTextAlignment(.center)
+                        }
+                        
                     }
                 }.tabItem {Label("VIEW", systemImage: "magnifyingglass")}
                  .tag(2)
-                 .padding()
                 
                 VStack {
                     List {
