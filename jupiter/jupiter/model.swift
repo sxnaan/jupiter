@@ -55,7 +55,11 @@ struct SectionResponse : Codable {
     let instructors : [String]
 }
 
-struct Meeting : Codable {
+struct Meeting : Codable, Hashable {
+    static func == (lhs: Meeting, rhs: Meeting) -> Bool {
+        return lhs.room == rhs.room && lhs.start_time == rhs.start_time
+    }
+    
     let days : String
     let room : String
     let building : String
@@ -103,19 +107,28 @@ struct CourseGPAResponse : Codable {
 // Now that we've set the required structs to hold the JSON responses, we can proceed to working on our own design
 // We don't need most of the associated info that either API gives us, so let's make a condensed version in our own definition of a section & a course:
 
-struct Section {
-    var course_name : String
+struct Section : Hashable {
+    static func == (lhs: Section, rhs: Section) -> Bool {
+        return lhs.section_id == rhs.section_id
+    }
+    
     var course_id : String
+    var course_name : String
     var section_id : String
     var prof : [String]
     var prof_rating : Float
     var avg_gpa : Float
     var open_seats : Int
     var waitlist : Int
+    var credits : Int
     var times : [Meeting]
 }
 
-struct Course {
+struct Course : Hashable {
+    static func == (lhs: Course, rhs: Course) -> Bool {
+        return lhs.course_id == rhs.course_id
+    }
+    
     var course_id : String
     var sections : [Section]
 }
@@ -128,26 +141,32 @@ struct Course {
 class ScheduleBuilder : ObservableObject {
     let tstdo_url = "https://api.umd.io/v1/"
     let pt_url = "https://api.planetterp.com/v1/"
-    
-    var courses : [Course]
-    var schedules : [[Section]]
+
+    @Published var courses : [Course]
+    @Published var schedules : [[Section]]
     
     init() {
         courses = []
         schedules = []
     }
     
-    // provides functionality for the "RESET" button in out UI
+    // provides functionality for the "RESET" button in our UI
     func reset_courses() {
         courses = []
     }
     
-    // GET course (returns the full json response outlined on lines 18-42)
+    // provides functionality for the "BUILD" button in our UI
+    func reset_schedules() {
+        schedules = []
+    }
+    
+    // GET course
     func get_course(_ course_id : String) -> CourseResponse {
         let url = "\(tstdo_url)courses/\(course_id)"
+        let semaphore = DispatchSemaphore(value: 0)
         var course_res : [CourseResponse]? = nil
-            
-        URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
+
+        let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
             guard let data = data, error == nil else {
                 print("No course found!")
                 return
@@ -156,7 +175,7 @@ class ScheduleBuilder : ObservableObject {
             do {
                 res = try JSONDecoder().decode([CourseResponse].self, from: data)
             } catch {
-                print("Error: Failed to convert \(error)")
+                print("Error: \(error)")
             }
             
             guard let json = res else {
@@ -165,16 +184,22 @@ class ScheduleBuilder : ObservableObject {
             
             // print(json)
             course_res = json
+            semaphore.signal()
             
-        }).resume()
+        })
+        
+        task.resume()
+        semaphore.wait()
         return course_res![0]
     }
     
-    // GET section (returns the full json response outlined on lines 48-67)
-    func get_section(_ section_id : String) -> SectionResponse {
+    // GET section
+    func get_section(_ section_id : String) -> SectionResponse  {
         let url = "\(tstdo_url)courses/sections/\(section_id)"
-        var sect_res : [SectionResponse]? = nil
-        URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
+        let semaphore = DispatchSemaphore(value: 0)
+        var section_res : [SectionResponse]? = nil
+
+        let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
             guard let data = data, error == nil else {
                 print("No section found!")
                 return
@@ -183,7 +208,7 @@ class ScheduleBuilder : ObservableObject {
             do {
                 res = try JSONDecoder().decode([SectionResponse].self, from: data)
             } catch {
-                print("Error: Failed to convert \(error)")
+                print("Error: \(error)")
             }
             
             guard let json = res else {
@@ -191,20 +216,28 @@ class ScheduleBuilder : ObservableObject {
             }
             
             // print(json)
-            sect_res = json
+            section_res = json
+            semaphore.signal()
             
-        }).resume()
-        return sect_res![0]
+        })
+        
+        task.resume()
+        semaphore.wait()
+        return section_res![0]
     }
     
     // GET prof rating
     func get_prof(_ prof_name : String) -> Float {
-        let url = "\(pt_url)/professor?name=\(prof_name)"
-        var rating : Float = -1
+        // we need to replace space with %20 for URL to work
+        let sanitized_name = prof_name.replacingOccurrences(of: " ", with: "%20")
+        let url = "\(pt_url)professor?name=\(sanitized_name)"
         
-        URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
+        let semaphore = DispatchSemaphore(value: 0)
+        var prof_rating : Float = -1
+
+        let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
             guard let data = data, error == nil else {
-                print("No prof found!")
+                print("No course found!")
                 return
             }
             var res : ProfResponse?
@@ -219,17 +252,24 @@ class ScheduleBuilder : ObservableObject {
             }
             
             // print(json)
-            rating = json.average_rating
-        }).resume()
-        return rating
+            prof_rating = json.average_rating
+            semaphore.signal()
+            
+        })
+        
+        task.resume()
+        semaphore.wait()
+        return prof_rating
     }
     
     // GET gpa
     func get_gpa(_ course_id : String) -> Float {
-        let url = "\(pt_url)/grades?course=\(course_id)"
-        var gpa : Float = -1
+        let url = "\(pt_url)course?name=\(course_id)"
         
-        URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
+        let semaphore = DispatchSemaphore(value: 0)
+        var avg_gpa : Float = -1
+
+        let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
             guard let data = data, error == nil else {
                 print("No course found!")
                 return
@@ -238,7 +278,7 @@ class ScheduleBuilder : ObservableObject {
             do {
                 res = try JSONDecoder().decode(CourseGPAResponse.self, from: data)
             } catch {
-                print("Error: Failed to convert \(error)")
+                print("Error: Failed to joe \(error)")
             }
             
             guard let json = res else {
@@ -246,44 +286,41 @@ class ScheduleBuilder : ObservableObject {
             }
             
             // print(json)
-            gpa = json.average_gpa
-        }).resume()
+            avg_gpa = json.average_gpa
+            semaphore.signal()
+            
+        })
         
-        return gpa
+        task.resume()
+        semaphore.wait()
+        return avg_gpa
+
     }
     
     // use the 4 methods above to build the Section and Course structs
     func build_course(_ course_id : String) -> Course {
-        let course_json = get_course(course_id)
+        let course = get_course(course_id)
         var sections : [Section] = []
-        var section : Section? = nil
-        for s_id in course_json.sections {
-            let sect_json = get_section(s_id)
+        
+        for section_id in course.sections {
+            let section = get_section(section_id)
+            
+            // we need to compute avg rating of profs
             var prof_ratings : Float = 0
-            var num_profs = sect_json.instructors.count
-            for prof in sect_json.instructors {
-                let prof_rating = get_prof(prof)
-                if prof_rating == -1 {
-                    num_profs -= 1
-                    continue
-                } else {
-                    prof_ratings += prof_rating
-                }
+            for prof in section.instructors {
+                let rating = get_prof(prof)
+                prof_ratings += rating
             }
+            let avg_rating = prof_ratings/Float(section.instructors.count)
             
-            // get average
-            let avg_prof_rating = prof_ratings / Float(sect_json.instructors.count)
-            
-            section = Section(course_name: course_json.name, course_id: course_id, section_id: sect_json.section_id, prof: sect_json.instructors, prof_rating: avg_prof_rating, avg_gpa: get_gpa(course_id), open_seats: Int(sect_json.open_seats)!, waitlist: Int(sect_json.waitlist)!, times: sect_json.meetings)
-            sections.append(section!)
+            sections.append(Section(course_id: course.course_id, course_name: course.name, section_id: section_id, prof: section.instructors, prof_rating: avg_rating, avg_gpa: get_gpa(course_id), open_seats: Int(section.open_seats)!, waitlist: Int(section.waitlist)!, credits: Int(course.credits)!, times: section.meetings))
         }
         
-        return Course(course_id: course_json.course_id, sections: sections)
-        
+        return Course(course_id: course.course_id, sections: sections)
     }
     
     // This is triggered every time a student picks a new course to add
-    func add_course(course_id : String) -> Bool {
+    func add_course(_ course_id : String) -> Bool {
         // first make sure that the course isn't already in the course list
         for c in courses {
             if c.course_id == course_id {
@@ -291,14 +328,15 @@ class ScheduleBuilder : ObservableObject {
             }
         }
         
-        let course = build_course(course_id)
-        courses.append(course)
+        // build course before you add it
+        let new_course = build_course(course_id)
+        courses.append(new_course)
         
         return true
     }
     
     // This is triggered every time a student removes a course from their course-list
-    func remove_course(course_id : String) -> Bool {
+    func remove_course(_ course_id : String) -> Bool {
         let len = courses.count
         courses = courses.filter {$0.course_id != course_id}
         
@@ -310,26 +348,126 @@ class ScheduleBuilder : ObservableObject {
         return true
     }
     
+    // Prints out the course-list
+    func print_courses() {
+        for course in self.courses {
+            print(course)
+        }
+        print("")
+    }
+    
     // Helper method to make sure any schedule our algo puts together is structurally valid
-    func time_conflict() -> Bool {
-        // iterate through courses in the provided list, if there is a problem get rid
-        
+    func time_conflict(_ schedule : [Section]) -> Bool {
+        // iterate through sections in the provided list, if there is a time conflict get rid of it
+        // we want to check all pairs of sections in the schedules (O(n^2))
         return false
     }
     
-    // from the course list, build all possible schedules
+    // For any given schedule, use prof ratings + avg gpa of each section to score
+    // Weigh scores by credits (i.e. if a 1 credit class has a bad prof, it matters less than if a 4 credit class has a bad prof)
     func get_score(schedule : [Section]) -> Float {
         return 0
     }
     
+    // Generate all combos of schedules for the courselist (self.courses)
     func build_schedules() -> [[Section]] {
-        var schedules : [[Section]] = []
         // combine all combos of sections of the classes in the <courses> instance variable
         
+        // first we need to reset schedules in case it was called earlier
+        reset_schedules()
+        
+        let num_courses = courses.count
+        
+        switch num_courses {
+        case 1:
+            schedules.append(courses[0].sections)
+        case 2:
+            for s_0 in courses[0].sections {
+                for s_1 in courses[1].sections {
+                    let schedule : [Section] = [s_0, s_1]
+                    if !time_conflict(schedule) {
+                        schedules.append(schedule)
+                    }
+                }
+            }
+        case 3:
+            for s_0 in courses[0].sections {
+                for s_1 in courses[1].sections {
+                    for s_2 in courses[2].sections {
+                        let schedule : [Section] = [s_0, s_1, s_2]
+                        if !time_conflict(schedule) {
+                            schedules.append(schedule)
+                        }                    }
+                }
+            }
+        case 4:
+            for s_0 in courses[0].sections {
+                for s_1 in courses[1].sections {
+                    for s_2 in courses[2].sections {
+                        for s_3 in courses[3].sections {
+                            let schedule : [Section] = [s_0, s_1, s_2, s_3]
+                            if !time_conflict(schedule) {
+                                schedules.append(schedule)
+                            }                        }
+                    }
+                }
+            }
+        case 5:
+            for s_0 in courses[0].sections {
+                for s_1 in courses[1].sections {
+                    for s_2 in courses[2].sections {
+                        for s_3 in courses[3].sections {
+                            for s_4 in courses[4].sections {
+                                let schedule : [Section] = [s_0, s_1, s_2, s_3, s_4]
+                                if !time_conflict(schedule) {
+                                    schedules.append(schedule)
+                                }                            }
+                        }
+                    }
+                }
+            }
+            
+        case 6:
+            for s_0 in courses[0].sections {
+                for s_1 in courses[1].sections {
+                    for s_2 in courses[2].sections {
+                        for s_3 in courses[3].sections {
+                            for s_4 in courses[4].sections {
+                                for s_5 in courses[5].sections {
+                                    let schedule : [Section] = [s_0, s_1, s_2, s_3, s_4, s_5]
+                                    if !time_conflict(schedule) {
+                                        schedules.append(schedule)
+                                    }                                }
+                            }
+                        }
+                    }
+                }
+            }
+        default:
+            schedules = []
+        }
         
         // make sure to sort schedules by score (ML)
+        // for each
         
         return schedules
+    }
+    
+    // Print all the schedules we generated
+    func print_schedules() {
+        print("You selected the following courses:")
+        for course in courses {
+            print(course.course_id)
+        }
+        print("")
+        
+        print("\(schedules.count) Schedules Generated")
+        for schedule in schedules {
+            for section in schedule {
+                print(section.section_id, section.times[0].days, section.times[0].start_time, section.times[0].end_time)
+            }
+            print("")
+        }
     }
     
 }

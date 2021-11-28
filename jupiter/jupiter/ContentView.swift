@@ -17,8 +17,25 @@ struct ContentView: View {
     private var items: FetchedResults<Item>
 
     @EnvironmentObject var sb : ScheduleBuilder
+    @State var course_input : String = ""
+    @State private var selection = 1
     
-    func test() {
+    func add() {
+        sb.add_course(course_input)
+        course_input = ""
+    }
+    
+    func remove(_ course_id : String) {
+        sb.remove_course(course_id)
+    }
+    
+    func print() {
+        sb.build_schedules()
+        sb.print_schedules()
+    }
+    
+    func reset() {
+        sb.reset_courses()
     }
     
     var body: some View {
@@ -28,33 +45,92 @@ struct ContentView: View {
             
             VStack {}
 
-            TabView {
+            TabView(selection: $selection) {
                 VStack {
                     Text("Hello Terp!")
                         .font(.largeTitle)
                         .fontWeight(.black)
                         .padding(.trailing,160)
-                    Text("Welcome to Jupiter, a lightweight schedule builder alternative to Venus\n\nOur predicitive ML ranking model (powered by CMSC422) organizes classes based on the likelihood that they give you a high GPA.").fontWeight(.light).padding([.top, .leading, .trailing], 22.5)
+                    Text("Welcome to Jupiter, a lightweight schedule builder alternative to Venus\n\nOur predicitive ML ranking model (powered by CMSC422) organizes schedules based on the likelihood that they give you a high GPA.").fontWeight(.light).padding([.top, .leading, .trailing], 22.5)
                     
                     Spacer()
                         .frame(height: 300.0)
                     
-                }.tabItem {Text("ABOUT")}
+                }.tabItem {Label("ABOUT", systemImage: "info.circle")}
+                 .tag(0)
                 
-                VStack {
+                ZStack {
+                    VStack {
+                        TextField("Enter a course id (CMSC436)", text: $course_input)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .position(x: 165, y: 100)
+                            .padding([.top, .leading, .trailing], 30)
+                        
+                        Button(action:add) {
+                            Text("ADD COURSE")
+                                .font(.headline)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 20.0)
+                                        .stroke()
+                                        .frame(width: 150, height: 30, alignment: .center)
+                                )
+                        }.offset(x: 0, y: -170)
+                         .padding([.top,.bottom], 20.0)
+                        
+                        HStack {
+                            Button(action:print) {
+                                Text("BUILD")
+                                    .font(.headline)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 20.0)
+                                            .stroke()
+                                            .frame(width: 75, height: 30, alignment: .center)
+                                    )
+                            }.padding([.top, .trailing], 50.0)
+                            
+                            Button(action:reset) {
+                                Text("RESET")
+                                    .font(.headline)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 20.0)
+                                            .stroke()
+                                            .frame(width: 75, height: 30, alignment: .center)
+                                    )
+                            }.padding(.top, 50.0)
+                        }.position(x: 195, y: 250)
+                    }
                     
-                    Button(action:test) {
-                        Text("Test")
-                            .font(.headline)
-                            .background(
+                    VStack {
+                        ForEach(sb.courses, id: \.self) { course in
+                            HStack {
+                                Text(course.course_id)
+                                    .padding()
+                                Button {
+                                    remove(course.course_id)
+                                } label: {
+                                    Image("close-circle-regular")
+                                        .resizable()
+                                        .frame(width: 20, height: 20, alignment: .center)
+                                }.padding(.leading, 50)
+                            }.background(
                                 RoundedRectangle(cornerRadius: 20.0)
                                     .stroke()
-                                    .frame(width: 50, height: 30, alignment: .center)
+                                    .frame(width: 200, height: 30, alignment: .center)
                             )
-                    }.padding(.top, 50.0)
-                    
+                            
+                        }.offset(x: 0, y: 100)
+                    }
                 
-                }.tabItem { Text("BUILD") }
+                }.tabItem { Label("BUILD", systemImage: "hammer") }
+                 .tag(1)
+                
+                VStack {
+                    ScrollView {
+                        Text("You chose the following classes:\n\nHere are your schedules")
+                    }
+                }.tabItem {Label("VIEW", systemImage: "magnifyingglass")}
+                 .tag(2)
+                 .padding()
                 
                 VStack {
                     List {
@@ -72,7 +148,8 @@ struct ContentView: View {
                             Label("Add Item", systemImage: "plus")
                         }
                     }
-                }.tabItem {Text("HISTORY")}
+                }.tabItem {Label("SAVED", systemImage: "list.dash")}
+                 .tag(3)
                 .padding()
             }
         }
@@ -119,6 +196,6 @@ private let itemFormatter: DateFormatter = {
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
-        ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+        ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext).environmentObject(ScheduleBuilder())
     }
 }
