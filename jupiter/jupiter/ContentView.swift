@@ -8,6 +8,100 @@
 import SwiftUI
 import CoreData
 
+struct AddCourseError : View {
+    @Binding var course_id : String
+    @Binding var add_course_error : Bool
+    var body: some View {
+        VStack {
+            VStack(alignment:.center){
+                Text("ERROR").font(.title).fontWeight(.heavy).foregroundColor(.white)
+                Text("COURSE \"\(course_id.uppercased())\" NOT FOUND\nPLEASE TRY AGAIN").font(.headline).fontWeight(.heavy).foregroundColor(.white).multilineTextAlignment(.center)
+                Button {
+                    add_course_error = false
+                } label : {
+                    Text("CLOSE")
+                        .font(.headline)
+                        .fontWeight(.heavy)
+                        .foregroundColor(.white)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20.0)
+                                .frame(width: 100, height: 30, alignment: .center)
+                                .foregroundColor(.red)
+                        )
+                }.padding(.top, 50.0)
+            }.padding(.bottom, 5.0)
+        }.background(
+            Rectangle()
+                .frame(width: 850, height: 1400, alignment: .center)
+                .foregroundColor(Color(red: 0, green: 0, blue: 0, opacity:0.8))
+        )
+    }
+}
+
+struct DetailsView : View {
+    var body: some View {
+        Text("details")
+    }
+}
+
+struct SchedulesView : View {
+    @EnvironmentObject var sb : ScheduleBuilder
+    @Binding var schedules : [Schedule]
+    
+    func toggle_save(_ schedule_id : UUID) {
+        // get schedule
+        sb.toggle_save(schedule_id)
+    }
+    
+    func toggle_calendar(_ schedule_id : UUID) {
+        sb.toggle_calendar(schedule_id)
+    }
+    
+    var body : some View {
+        VStack(alignment: .leading) {
+            ForEach(schedules, id: \.self) { schedule in
+                // this is one schedule
+                VStack(alignment: .leading) {
+                    Text("\(schedule.rank).").font(.title)
+                    ForEach(schedule.sections, id: \.self) { section in
+                        HStack(alignment: .top){
+                            Text("\(section.section_id)").fontWeight(/*@START_MENU_TOKEN@*/.bold/*@END_MENU_TOKEN@*/)
+                            VStack(alignment: .leading){
+                                ForEach(section.times, id: \.self) { meeting in
+                                    Text("\(meeting.days) \(meeting.start_time) - \(meeting.end_time)").fontWeight(.light)
+                                }
+                            }
+                        }
+                    }
+                    Spacer()
+                    HStack {
+                        Button {
+                            toggle_save(schedule.id)
+                        } label : {
+                            HStack {
+                                Image(systemName: schedule.saved.save_img).foregroundColor(.black)
+                                Text(schedule.saved.save_text)
+                            }
+                        }.padding(.trailing, schedule.saved.save_padding)
+                        Button {
+                            toggle_calendar(schedule.id)
+                        } label : {
+                            HStack {
+                                Image(systemName: schedule.saved.calendar_img).foregroundColor(.black)
+                                Text(schedule.saved.calendar_text)
+                            }
+                        }
+                    }
+                }.padding()
+                 .background(RoundedRectangle(cornerRadius: 20.0)
+                                .stroke())
+                Spacer(minLength: 20)
+            }
+        }
+
+    }
+}
+
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
 
@@ -18,10 +112,15 @@ struct ContentView: View {
 
     @EnvironmentObject var sb : ScheduleBuilder
     @State var course_input : String = ""
+    @State var error_course : String = ""
     @State private var selection = 1
     
+    // State var to manage error in add_course
+    @State private var add_course_error : Bool = false
+    
     func add() {
-        sb.add_course(course_input)
+        add_course_error = !sb.add_course(course_input)
+        error_course = course_input
         course_input = ""
     }
     
@@ -31,7 +130,6 @@ struct ContentView: View {
     
     func build() {
         sb.build_schedules()
-        // sb.print_schedules() -- this was only needed for testing
         selection = 2
     }
     
@@ -39,26 +137,13 @@ struct ContentView: View {
         sb.reset_courses()
         sb.reset_schedules()
     }
-    
-    // ******* TO-DO: IMPLEMENT ********* //
-    // saves the selected schedule to core-data
-    func save() {
-        
-    }
-    
-    // ******* TO-DO: IMPLEMENT ********* //
-    // adds the selected schedule to a calendar
-    func add_to_calendar() {
-        
-    }
-    
+
     
     var body: some View {
         
         ZStack {
             // splash page
-            
-            VStack {}
+            // VStack
 
             TabView(selection: $selection) {
                 VStack {
@@ -115,25 +200,31 @@ struct ContentView: View {
                         }.position(x: 195, y: 250)
                     }
                     
-                    VStack {
-                        ForEach(sb.courses, id: \.self) { course in
-                            HStack {
-                                Text(course.course_id)
-                                    .padding()
-                                Button {
-                                    remove(course.course_id)
-                                } label: {
-                                    Image("close-circle-regular")
-                                        .resizable()
-                                        .frame(width: 20, height: 20, alignment: .center)
-                                }.padding(.leading, 50)
-                            }.background(
-                                RoundedRectangle(cornerRadius: 20.0)
-                                    .stroke()
-                                    .frame(width: 200, height: 30, alignment: .center)
-                            )
-                            
-                        }.offset(x: 0, y: 100)
+                    ZStack {
+                        VStack {
+                            ForEach(sb.courses, id: \.self) { course in
+                                HStack {
+                                    Text(course.course_id)
+                                        .padding()
+                                    Button {
+                                        remove(course.course_id)
+                                    } label: {
+                                        Image("close-circle-regular")
+                                            .resizable()
+                                            .frame(width: 20, height: 20, alignment: .center)
+                                    }.padding(.leading, 50)
+                                }.background(
+                                    RoundedRectangle(cornerRadius: 20.0)
+                                        .stroke()
+                                        .frame(width: 200, height: 30, alignment: .center)
+                                )
+                                
+                            }.offset(x: 0, y: 100)
+                        }
+                        if add_course_error {
+                            AddCourseError(course_id: $error_course, add_course_error: $add_course_error)
+                        }
+                        
                     }
                 
                 }.tabItem { Label("BUILD", systemImage: "hammer") }
@@ -143,12 +234,12 @@ struct ContentView: View {
                     ScrollView {
                         Spacer(minLength: 25)
                         
-                        if(sb.schedules.count > 0){
+                        if sb.courses.count > 0 {
                             Text("YOU CHOSE THE FOLLOWING COURSES")
                                 .font(.subheadline)
                                 .fontWeight(.bold)
                                 .foregroundColor(.blue)
-                    
+                            
                             VStack(alignment: .leading) {
                                 ForEach(sb.courses, id: \.self) {course in
                                     HStack (alignment: .top){
@@ -159,50 +250,31 @@ struct ContentView: View {
                             }.padding()
                         
                             Spacer(minLength: 25)
-                            
+                        }
+                        if sb.schedules.count > 0 {
                             Text("WE BUILT THE FOLLOWING SCHEDULES")
                                 .font(.subheadline)
                                 .fontWeight(.bold)
                                 .foregroundColor(.blue)
-
-                            VStack(alignment: .leading) {
-                                ForEach(sb.schedules, id: \.self) { schedule in
-                                    // this is one schedule
-                                    VStack(alignment: .leading) {
-                                        Text("\(schedule.rank).").font(.title)
-                                        ForEach(schedule.sections, id: \.self) { section in
-                                            HStack(alignment: .top){
-                                                Text("\(section.section_id)").fontWeight(/*@START_MENU_TOKEN@*/.bold/*@END_MENU_TOKEN@*/)
-                                                VStack(alignment: .leading){
-                                                    ForEach(section.times, id: \.self) { meeting in
-                                                        Text("\(meeting.days) \(meeting.start_time) \(meeting.end_time)").fontWeight(.light)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Spacer()
-                                        HStack {
-                                            HStack {
-                                                Image(systemName: "bookmark").foregroundColor(.black)
-                                                Text("Save")
-                                            }.padding(.trailing, 50)
-                                            HStack {
-                                                Image(systemName: "calendar.badge.plus").foregroundColor(.black)
-                                                Text("Add to Calendar")
-                                            }
-                                        }
-                                    }.padding()
-                                     .background(RoundedRectangle(cornerRadius: 20.0)
-                                                    .stroke())
-                                    Spacer(minLength: 20)
-                                }
-                            }
+                            
+                            SchedulesView(schedules: $sb.schedules)
+                            
                         } else {
-                            Spacer(minLength: 200)
-                            Text("Nothing to see here yet... go build a schedule or two!")
-                                .font(.largeTitle)
-                                .fontWeight(.black)
-                                .multilineTextAlignment(.center)
+                            if sb.courses.count > 0 {
+                                Text("The only schedules for your selected courses had a time conflict, no schedules generated")
+                                    .font(.headline)
+                                    .fontWeight(.light)
+                                    .multilineTextAlignment(.leading)
+                                    .foregroundColor(.red)
+                                    .padding()
+                            } else {
+                                Spacer(minLength: 200)
+                                Text("Nothing to see here yet... go build a schedule or two!")
+                                    .font(.largeTitle)
+                                    .fontWeight(.black)
+                                    .multilineTextAlignment(.center)
+                                    .padding()
+                            }
                         }
                         
                     }
@@ -210,21 +282,30 @@ struct ContentView: View {
                  .tag(2)
                 
                 VStack {
-                    List {
-                        ForEach(items) { item in
-                            Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                        }
-                        .onDelete(perform: deleteItems)
+                    ScrollView {
+                        Spacer(minLength: 10)
+                        Text("YOUR BOOKMARKED SCHEDULES")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                        Spacer(minLength: 15)
+                        SchedulesView(schedules: $sb.bookmarks)
                     }
-                    .toolbar {
-                        #if os(iOS)
-                        EditButton()
-                        #endif
-            
-                        Button(action: addItem) {
-                            Label("Add Item", systemImage: "plus")
-                        }
-                    }
+//                    List {
+//                        ForEach(items) { item in
+//                            Text("Item at \(item.timestamp!, formatter: itemFormatter)")
+//                        }
+//                        .onDelete(perform: deleteItems)
+//                    }
+//                    .toolbar {
+//                        #if os(iOS)
+//                        EditButton()
+//                        #endif
+//
+//                        Button(action: addItem) {
+//                            Label("Add Item", systemImage: "plus")
+//                        }
+//                    }
                 }.tabItem {Label("SAVED", systemImage: "list.dash")}
                  .tag(3)
                 .padding()

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 // We need to declare structs that match the API response (so that we can store JSON)
 
@@ -102,10 +103,49 @@ struct CourseGPAResponse : Codable {
 // * NOTE: for now, we won't implement this because the response is a massive array of every single recorded section <prof_name> has taught of <course_id>, and we doubt that we'll get a significant difference in avg. gpa (not worth the computational load)
 // Each entry lists how many individiduals got an A+, A, A-, ... , D-, F. Computing gpa for this & then averaging it is just overkill (at least as of 11/26/21)
 
+//struct ProfGPAResponse : Codable {
+//    let course : String
+//    let professor : String
+//    let semester : String
+//    let section : String
+//    let A+ : Int
+//    let A : Int
+//    let A- : Int
+//    let B+ : Int
+//    let B : Int
+//    let B- : Int
+//    let C+ : Int
+//    let C : Int
+//    let C- : Int
+//    let D+ : Int
+//    let D : Int
+//    let D- : Int
+//    let F : Int
+//    let W : Int
+//    let Other : Int
+//}
+
 // ************************************************************************************************* //
 
 // Now that we've set the required structs to hold the JSON responses, we can proceed to working on our own design
 // We don't need most of the associated info that either API gives us, so let's make a condensed version in our own definition of a section & a course:
+
+struct Times : Hashable {
+    static func == (lhs: Times, rhs: Times) -> Bool {
+        return lhs.room == rhs.room && lhs.start_time == rhs.start_time
+    }
+    
+    let days : String
+    let room : String
+    let building : String
+    let classtype : String
+    let start_time : String
+    let end_time : String
+    
+    // members for time conflicts
+    let start_time_float : Float
+    let end_time_float : Float
+}
 
 struct Section : Hashable {
     static func == (lhs: Section, rhs: Section) -> Bool {
@@ -121,7 +161,7 @@ struct Section : Hashable {
     var open_seats : Int
     var waitlist : Int
     var credits : Int
-    var times : [Meeting]
+    var times : [Times]
 }
 
 struct Course : Hashable {
@@ -133,9 +173,47 @@ struct Course : Hashable {
     var sections : [Section]
 }
 
-// maybe use this wrapper struct (currently we are not)
+
+struct Saved : Hashable {
+    static func == (lhs: Saved, rhs: Saved) -> Bool {
+        return lhs.save_img == rhs.save_img && lhs.calendar_img == rhs.calendar_img
+    }
+    var save_img : String = "bookmark"
+    var save_text : String = "Save"
+    var save_padding : CGFloat? = 50
+    var calendar_img : String = "calendar.badge.plus"
+    var calendar_text : String = "Add to Calendar"
+    
+    mutating func toggle_save(){
+        if save_img == "bookmark" {
+            save_img = "bookmark.fill"
+            save_text = "Unsave"
+            save_padding = (calendar_text == "Remove from Calendar") ? 10 : 40
+        } else {
+            save_img = "bookmark"
+            save_text = "Save"
+            save_padding = (calendar_text == "Remove from Calendar") ? 30 : 50
+        }
+    }
+    
+    mutating func toggle_calendar(){
+        if calendar_img == "calendar.badge.plus" {
+            calendar_img = "calendar.badge.minus"
+            calendar_text = "Remove from Calendar"
+            save_padding = (save_text == "Unsave") ? 10 : 30
+        } else {
+            calendar_img = "calendar.badge.plus"
+            calendar_text = "Add to Calendar"
+            save_padding = 50
+        }
+
+    }
+}
+
+
 struct Schedule : Hashable {
     static func == (lhs: Schedule, rhs: Schedule) -> Bool {
+        if lhs.sections.count != rhs.sections.count { return false }
         let num_sections = lhs.sections.count
         for i in 0..<num_sections {
             if lhs.sections[i].section_id != rhs.sections[i].section_id {
@@ -144,6 +222,9 @@ struct Schedule : Hashable {
         }
         return true
     }
+    
+    let id : UUID = UUID()
+    var saved : Saved = Saved()
     var rank : Int
     var score : Float
     var sections : [Section]
@@ -160,10 +241,12 @@ class ScheduleBuilder : ObservableObject {
 
     @Published var courses : [Course]
     @Published var schedules : [Schedule]
+    @Published var bookmarks : [Schedule]
     
     init() {
         courses = []
         schedules = []
+        bookmarks = []
     }
     
     // provides functionality for the "RESET" button in our UI
@@ -178,8 +261,9 @@ class ScheduleBuilder : ObservableObject {
     
     // GET course, returns the full JSON representation of a course outlined on lines 17-41
     // TO-DO: set a diff return type for failure cases
-    func get_course(_ course_id : String) -> CourseResponse {
-        let url = "\(tstdo_url)courses/\(course_id)"
+    func get_course(_ course_id : String) -> [CourseResponse]? {
+        let sanitized_id = course_id.replacingOccurrences(of: " ", with: "")
+        let url = "\(tstdo_url)courses/\(sanitized_id)"
         let semaphore = DispatchSemaphore(value: 0)
         var course_res : [CourseResponse]? = nil
 
@@ -192,22 +276,19 @@ class ScheduleBuilder : ObservableObject {
             do {
                 res = try JSONDecoder().decode([CourseResponse].self, from: data)
             } catch {
-                print("Error: \(error)")
-            }
-            
-            guard let json = res else {
-                return
+                print("Error!!!!!: \(error)")
+                course_res = nil
             }
             
             // print(json)
-            course_res = json
+            course_res = res
             semaphore.signal()
             
         })
         
         task.resume()
         semaphore.wait()
-        return course_res![0]
+        return course_res
     }
     
     // GET section, returns the full JSON representation of a section outlined on lines 46-69
@@ -244,50 +325,14 @@ class ScheduleBuilder : ObservableObject {
         return section_res![0]
     }
     
-    // GET prof rating, returns Float representation of prof_name's rating if found
-    // TO-DO: set a diff return type for failure cases
-    func get_prof(_ prof_name : String) -> Float {
-        // we need to replace space with %20 for URL to work
-        let sanitized_name = prof_name.replacingOccurrences(of: " ", with: "%20")
-        let url = "\(pt_url)professor?name=\(sanitized_name)"
-        
-        let semaphore = DispatchSemaphore(value: 0)
-        var prof_rating : Float = -1
-
-        let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
-            guard let data = data, error == nil else {
-                print("No course found!")
-                return
-            }
-            var res : ProfResponse?
-            do {
-                res = try JSONDecoder().decode(ProfResponse.self, from: data)
-            } catch {
-                print("Error: Failed to convert \(error)")
-            }
-            
-            guard let json = res else {
-                return
-            }
-            
-            // print(json)
-            prof_rating = json.average_rating
-            semaphore.signal()
-            
-        })
-        
-        task.resume()
-        semaphore.wait()
-        return prof_rating
-    }
-    
     // GET gpa, returns Float representation of course_id's GPA if found
     // TO-DO: set a diff return type for failure cases
     func get_gpa(_ course_id : String) -> Float {
         let url = "\(pt_url)course?name=\(course_id)"
         
         let semaphore = DispatchSemaphore(value: 0)
-        var avg_gpa : Float = -1
+        // defaults to 3.0 if we dont have course data
+        var avg_gpa : Float = 3.0
 
         let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
             guard let data = data, error == nil else {
@@ -297,18 +342,12 @@ class ScheduleBuilder : ObservableObject {
             var res : CourseGPAResponse?
             do {
                 res = try JSONDecoder().decode(CourseGPAResponse.self, from: data)
+                avg_gpa = res!.average_gpa
             } catch {
-                print("Error: Failed to joe \(error)")
+                print("Error: Failed to convert \(error)")
             }
             
-            guard let json = res else {
-                return
-            }
-            
-            // print(json)
-            avg_gpa = json.average_gpa
             semaphore.signal()
-            
         })
         
         task.resume()
@@ -317,24 +356,141 @@ class ScheduleBuilder : ObservableObject {
 
     }
     
+    // GET prof rating, returns Float representation of prof_name's rating if found
+    // TO-DO: set a diff return type for failure cases
+    func get_prof(_ prof_name : String) -> Float {
+        // we need to replace space with %20 for URL to work
+        let sanitized_name = prof_name.replacingOccurrences(of: " ", with: "%20")
+        let url = "\(pt_url)professor?name=\(sanitized_name)"
+        
+        let semaphore = DispatchSemaphore(value: 0)
+        // default rating in case we cant find the prof is median of 3.0
+        var prof_rating : Float = 3.0
+
+        let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
+            guard let data = data, error == nil else {
+                print("No course found!")
+                return
+            }
+            var res : ProfResponse?
+            do {
+                res = try JSONDecoder().decode(ProfResponse.self, from: data)
+                prof_rating = res!.average_rating
+            } catch {
+                print("Error: Failed to convert \(error)")
+            }
+            
+            semaphore.signal()
+        })
+        
+        task.resume()
+        semaphore.wait()
+        return prof_rating
+    }
+    
+//    func get_prof_gpa(_ course_id : String, _ prof_name : String) -> Float {
+//        // /grades?course=<course_id>&professor=<prof_name>
+//        let sanitized_name = prof_name.replacingOccurrences(of: " ", with: "%20")
+//        let url = "\(pt_url)grades?course=\(course_id)&professor=\(sanitized_name)"
+//
+//        let semaphore = DispatchSemaphore(value: 0)
+//        var prof_gpa_res : [ProfGPAResponse]? = nil
+//        // set default gpa to course gpa
+//        var avg_gpa : Float = get_gpa(course_id)
+//
+//        let task = URLSession.shared.dataTask(with: URL(string: url)!, completionHandler: {data, response, error in
+//            guard let data = data, error == nil else {
+//                print("No course found!")
+//                return
+//            }
+//            var res : [ProfGPAResponse]?
+//            do {
+//                res = try JSONDecoder().decode([ProfGPAResponse].self, from: data)
+//                prof_gpa_res = res
+//            } catch {
+//                print("Error: Failed to convert \(error)")
+//            }
+//
+//            semaphore.signal()
+//        })
+//
+//        task.resume()
+//        semaphore.wait()
+//
+//        // if we dont have data we're just gonna use the get_gpa function
+//        if prof_gpa_res == nil {
+//            return avg_gpa
+//        }
+//
+//        let prof_gpa_arr : [ProfGPAResponse] = prof_gpa_res!
+//
+//        var total_students = 0
+//        var total_gpa : Float = 0
+//
+//        for section in prof_gpa_arr {
+//            // section.grade gives the number of students with that grade
+//            total_gpa += Float(section.a_plus) * 4.0 + Float(section.a) * 4.0 + Float(section.a_minus) * 3.7 +
+//                         Float(section.b_plus) * 3.3 + Float(section.b) * 3.0 + Float(section.b_minus) * 2.7 +
+//                         Float(section.c_plus) * 2.3 + Float(section.c) * 2.0 + Float(section.c_minus) * 1.7 +
+//                         Float(section.d_plus) * 1.3 + Float(section.d) * 1.0 + Float(section.d_minus) * 0.7
+//            total_students += section.a_plus + section.a + section.a_minus +
+//                              section.b_plus + section.b + section.b_minus +
+//                              section.c_plus + section.c + section.c_minus +
+//                              section.d_plus + section.d + section.d_minus + section.f
+//        }
+//
+//        avg_gpa = total_gpa / Float(total_students)
+//        return avg_gpa
+//    }
+//
+   
+    func parse_time(_ time : String) -> Float {
+        // time format "8:50am"
+        let time_split = time.split(separator: ":")
+        var hours : Float = Float(time_split[0])!
+        let mins : Float = Float(time_split[1].prefix(2))! / 60.0
+        let am_pm = time_split[1].suffix(2)
+        
+        if am_pm == "pm" && hours < 12 { hours += 12.0}
+        
+        return hours + mins
+    }
+    
     // use the 4 methods above to build the Section and Course structs
     // Returns the course, TO-DO: set a diff return type for failure cases
-    func build_course(_ course_id : String) -> Course {
-        let course = get_course(course_id)
+    func build_course(_ course_id : String) -> Course? {
+        let course_arr = get_course(course_id)
         var sections : [Section] = []
+        
+        if course_arr == nil {
+            return nil
+        }
+        
+        let course : CourseResponse = course_arr![0]
         
         for section_id in course.sections {
             let section = get_section(section_id)
             
             // we need to compute avg rating of profs
             var prof_ratings : Float = 0
+            // var prof_gpas : Float = 0
             for prof in section.instructors {
-                let rating = get_prof(prof)
-                prof_ratings += rating
+                prof_ratings += get_prof(prof)
+                // prof_gpas += get_prof_gpa(course.course_id, prof)
             }
-            let avg_rating = prof_ratings/Float(section.instructors.count)
             
-            sections.append(Section(course_id: course.course_id, course_name: course.name, section_id: section_id, prof: section.instructors, prof_rating: avg_rating, avg_gpa: get_gpa(course_id), open_seats: Int(section.open_seats)!, waitlist: Int(section.waitlist)!, credits: Int(course.credits)!, times: section.meetings))
+            let avg_rating = prof_ratings/Float(section.instructors.count)
+            let avg_gpa = get_gpa(course.course_id)
+            // let avg_gpa = prof_gpas/Float(section.instructors.count)
+            
+            var times_arr : [Times] = []
+            // we need to build the times object
+            for meeting in section.meetings {
+                // each one of these is a Meeting object
+                times_arr.append(Times(days: meeting.days, room: meeting.room, building: meeting.building, classtype: meeting.classtype, start_time: meeting.start_time, end_time: meeting.end_time, start_time_float: parse_time(meeting.start_time), end_time_float: parse_time(meeting.end_time)))
+            }
+            
+            sections.append(Section(course_id: course.course_id, course_name: course.name, section_id: section_id, prof: section.instructors, prof_rating: avg_rating, avg_gpa: avg_gpa, open_seats: Int(section.open_seats)!, waitlist: Int(section.waitlist)!, credits: Int(course.credits)!, times: times_arr))
         }
         
         return Course(course_id: course.course_id, course_name: course.name, sections: sections)
@@ -352,7 +508,12 @@ class ScheduleBuilder : ObservableObject {
         
         // build course before you add it
         let new_course = build_course(course_id)
-        courses.append(new_course)
+        
+        if new_course == nil {
+            return false
+        }
+        
+        courses.append(new_course!)
         
         return true
     }
@@ -370,20 +531,92 @@ class ScheduleBuilder : ObservableObject {
         print("")
     }
     
-    // ******* TO-DO: IMPLEMENT ********* //
+    func overlap(a : [Float], b : [Float]) -> Bool {
+        // we effectively need to check if two ranges overlap, quickly
+        // we have a = [a.start,a.end] and b = [b.start,b.end]
+        
+        // case 1, a starts before (or at the same time as) b and ends after (or at the same time as) b
+        if a[0] <= b[0] && a[1] >= b[1] {
+            return true
+        
+        // case 2, a starts after b and ends before b
+        } else if a[0] > b[0] && a[1] < b[1] {
+            return true
+        
+        // case 3 a starts after b but before the end of b
+        } else if a[0] > b[0] && a[0] < b[1] {
+            return true
+        
+        // case 4, a starts before b but ends during b
+        } else if a[0] < b[0] && a[1] > b[0] && a[1] < b[1] {
+            return true
+        } else {
+            return false
+        }
+        
+    }
+    
     // Helper method to make sure any schedule our algo puts together is structurally valid
     // Returns true if there is a time conflict, else false
     func time_conflict(_ schedule : Schedule) -> Bool {
         // iterate through sections in the provided list, if there is a time conflict get rid of it
         // we want to check all pairs of sections in the schedules (O(n^2))
+        let num_sections = schedule.sections.count
+        let week = ["M","Tu","W","Th","F"]
+        for i in 0..<num_sections {
+            for j in i+1..<num_sections+1 {
+                if j == num_sections { continue }
+                let s1 : Section = schedule.sections[i]
+                let s2 : Section = schedule.sections[j]
+                // now we want to check time conflicts for these schedules
+                
+                // define a conflict: if a starts while b is going on, or it ends while b is going on, we have a conflict
+                //                    if a.start in range(b.start,b.end) || a.end in range(b.start,b.end)
+                // only if a and b are on the same day
+                for a in s1.times {
+                    // add the times to our array
+                    for b in s2.times {
+                        // check conflict for any combo of times
+                        for day in week {
+                            // if they both occur on the same day
+                            if a.days.contains(day) && b.days.contains(day){
+                                let overlap = overlap(a: [a.start_time_float, a.end_time_float], b: [b.start_time_float,b.end_time_float])
+                                if overlap { return true }
+                            }
+                        }
+                    }
+                }
+                
+                
+            }
+        }
+        
         return false
     }
     
     // ******* TO-DO: IMPLEMENT ********* //
     // For any given schedule, use prof ratings + avg gpa of each section to score
     // Weigh scores by credits (i.e. if a 1 credit class has a bad prof, it matters less than if a 4 credit class has a bad prof)
-    func get_score(schedule : Schedule) -> Float {
-        return 0
+    func get_score(_ sections : [Section]) -> Float {
+        
+        // let n = number of sections
+        // FORMULA: score = sum_i_1_to_n(section[i].avg_gpa * section[i].prof_rating * section[i].credits) / credits
+        var total_credits = 0
+        var score : Float = 0
+        // ok so a schedule has sections.
+        for section in sections {
+            // do the checks
+            total_credits += section.credits
+            score += section.avg_gpa * section.prof_rating * Float(section.credits)
+        }
+        
+        // catch div_by_zero error -- this means that planet terp didn't have data for any courses
+        if total_credits == 0 {
+            score = MAXFLOAT
+        }
+        
+        score /= Float(total_credits)
+        return score
     }
     
     // Generate all combos of schedules for the courselist (self.courses)
@@ -395,20 +628,21 @@ class ScheduleBuilder : ObservableObject {
         
         
         let default_rank : Int = -1
-        let default_score : Float = -1
         let num_courses = courses.count
         
         switch num_courses {
         case 1:
             for s in courses[0].sections {
-                let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s])
+                let sections : [Section] = [s]
+                let schedule : Schedule = Schedule(rank: default_rank, score: get_score(sections), sections: sections)
                 schedules.append(schedule)
             }
             
         case 2:
             for s_0 in courses[0].sections {
                 for s_1 in courses[1].sections {
-                    let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1])
+                    let sections : [Section] = [s_0, s_1]
+                    let schedule : Schedule = Schedule(rank: default_rank, score: get_score(sections), sections: sections)
                     if !time_conflict(schedule) {
                         schedules.append(schedule)
                     }
@@ -418,7 +652,8 @@ class ScheduleBuilder : ObservableObject {
             for s_0 in courses[0].sections {
                 for s_1 in courses[1].sections {
                     for s_2 in courses[2].sections {
-                        let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1, s_2])
+                        let sections : [Section] = [s_0, s_1, s_2]
+                        let schedule : Schedule = Schedule(rank: default_rank, score: get_score(sections), sections: sections)
                         if !time_conflict(schedule) {
                             schedules.append(schedule)
                         }                    }
@@ -429,7 +664,8 @@ class ScheduleBuilder : ObservableObject {
                 for s_1 in courses[1].sections {
                     for s_2 in courses[2].sections {
                         for s_3 in courses[3].sections {
-                            let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1, s_2, s_3])
+                            let sections : [Section] = [s_0, s_1, s_2, s_3]
+                            let schedule : Schedule = Schedule(rank: default_rank, score: get_score(sections), sections: sections)
                             if !time_conflict(schedule) {
                                 schedules.append(schedule)
                             }                        }
@@ -442,7 +678,8 @@ class ScheduleBuilder : ObservableObject {
                     for s_2 in courses[2].sections {
                         for s_3 in courses[3].sections {
                             for s_4 in courses[4].sections {
-                                let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1, s_2, s_3, s_4])
+                                let sections : [Section] = [s_0, s_1, s_2, s_3, s_4]
+                                let schedule : Schedule = Schedule(rank: default_rank, score: get_score(sections), sections: sections)
                                 if !time_conflict(schedule) {
                                     schedules.append(schedule)
                                 }                            }
@@ -458,7 +695,8 @@ class ScheduleBuilder : ObservableObject {
                         for s_3 in courses[3].sections {
                             for s_4 in courses[4].sections {
                                 for s_5 in courses[5].sections {
-                                    let schedule : Schedule = Schedule(rank: default_rank, score: default_score, sections: [s_0, s_1,s_2,s_3,s_4,s_5])
+                                    let sections : [Section] = [s_0, s_1, s_2, s_3, s_4, s_5]
+                                    let schedule : Schedule = Schedule(rank: default_rank, score: get_score(sections), sections: sections)
                                     if !time_conflict(schedule) {
                                         schedules.append(schedule)
                                     }                                }
@@ -469,20 +707,19 @@ class ScheduleBuilder : ObservableObject {
             }
         default:
             // if they choose more than 7 classes, it becomes O(n^7), where n is the avg number of sections per course
+            // print("That's too many classes! Ease up!")
             schedules = []
         }
         
         // ******* TO-DO: IMPLEMENT ********* //
         // make sure to sort schedules by score (ML)
-        // for schedule in schedules {
-        //     schedule.score = get_score(schedule)
-        // }
-        // schedules.sort(by:score)
+        schedules.sort(by: {$0.score > $1.score})
         
         // rank after sorting
         let num_schedules = schedules.count
         for i in 0..<num_schedules {
             schedules[i].rank = i+1
+            print(schedules[i].score)
         }
     }
     
@@ -503,15 +740,36 @@ class ScheduleBuilder : ObservableObject {
         }
     }
     
-    // ******* TO-DO: IMPLEMENT ********* //
-    // add schedule to core data
-    func save() {
+    
+    func toggle_save(_ s_id : UUID) {
+        var needsToBeBookmarked = true
+        // if its in bookmarks, remove it. otherwise add it
+        for i in 0..<bookmarks.count {
+            if bookmarks[i].id == s_id {
+                needsToBeBookmarked = false
+                bookmarks.remove(at: i)
+                break
+            }
+        }
         
+        for i in 0..<schedules.count {
+            // print(schedules[i].id)
+            if schedules[i].id == s_id {
+                schedules[i].saved.toggle_save()
+                if needsToBeBookmarked { bookmarks.append(schedules[i]) }
+                break
+            }
+        }
     }
     
-    // ******* TO-DO: IMPLEMENT ********* //
-    // add schedule to calendar
-    func add_to_calendar() {
+    // ******* TO-DO: IMPLEMENT ACTUAL CALENDAR FUNCTIONS ********* //
+    func toggle_calendar(_ s_id : UUID) {
+        for i in 0..<schedules.count {
+            if schedules[i].id == s_id {
+                schedules[i].saved.toggle_calendar()
+                break
+            }
+        }
         
     }
     
