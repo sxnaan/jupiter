@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import EventKit
 
 // We need to declare structs that match the API response (so that we can store JSON)
 
@@ -176,13 +177,16 @@ struct Course : Hashable {
 
 struct Saved : Hashable {
     static func == (lhs: Saved, rhs: Saved) -> Bool {
-        return lhs.save_img == rhs.save_img && lhs.calendar_img == rhs.calendar_img
+        return lhs.id == rhs.id
     }
+    
+    let id: UUID = UUID()
     var save_img : String = "bookmark"
     var save_text : String = "Save"
     var save_padding : CGFloat? = 50
     var calendar_img : String = "calendar.badge.plus"
     var calendar_text : String = "Add to Calendar"
+    var calendar_saved: Bool = false //Keeps track of the state of the calendar toggle. False -> no events on calendar so add them. True-> events are on calendar so remove them
     
     mutating func toggle_save(){
         if save_img == "bookmark" {
@@ -201,10 +205,12 @@ struct Saved : Hashable {
             calendar_img = "calendar.badge.minus"
             calendar_text = "Remove from Calendar"
             save_padding = (save_text == "Unsave") ? 10 : 30
+            calendar_saved = true
         } else {
             calendar_img = "calendar.badge.plus"
             calendar_text = "Add to Calendar"
             save_padding = 50
+            calendar_saved = false
         }
 
     }
@@ -213,14 +219,7 @@ struct Saved : Hashable {
 
 struct Schedule : Hashable {
     static func == (lhs: Schedule, rhs: Schedule) -> Bool {
-        if lhs.sections.count != rhs.sections.count { return false }
-        let num_sections = lhs.sections.count
-        for i in 0..<num_sections {
-            if lhs.sections[i].section_id != rhs.sections[i].section_id {
-                return false
-            }
-        }
-        return true
+        return lhs.id == rhs.id
     }
     
     let id : UUID = UUID()
@@ -238,6 +237,10 @@ struct Schedule : Hashable {
 class ScheduleBuilder : ObservableObject {
     let tstdo_url = "https://api.umd.io/v1/"
     let pt_url = "https://api.planetterp.com/v1/"
+    
+    let store = EKEventStore() //store is the user calendar
+    var calendar_events:[EKEvent] // A list of events in the user's calendar
+    
 
     @Published var courses : [Course]
     @Published var schedules : [Schedule]
@@ -247,6 +250,12 @@ class ScheduleBuilder : ObservableObject {
         courses = []
         schedules = []
         bookmarks = []
+        calendar_events = []
+        
+        //Request access from the user to edit their calendar in the schedule builder
+        store.requestAccess(to: .event) { granted, error in
+            // Handle the response to the request.
+        }
     }
     
     // provides functionality for the "RESET" button in our UI
@@ -766,12 +775,188 @@ class ScheduleBuilder : ObservableObject {
     func toggle_calendar(_ s_id : UUID) {
         for i in 0..<schedules.count {
             if schedules[i].id == s_id {
+                
+                //if the calendar is toggled to true, delete the events from the calendar and toggle it
+                if schedules[i].saved.calendar_saved == true{
+                    remove_all() //removes all of the calendar events
+                    schedules[i].saved.toggle_calendar()
+                    break
+                }
+                
+                //otherwise if the calendar is toggled to false, add the specified courses to the calendar
+                let sections_to_save = schedules[i].sections
+                
+                //for each section, get the title of the course
+                for j in 0..<sections_to_save.count {
+                    let curr_section = sections_to_save[j]
+                    let class_name = curr_section.course_name
+                    let class_id = curr_section.course_id
+                    
+                    //for each time struct in the section, create an event with the course name and the times specified within the struct
+                    for k in 0..<curr_section.times.count {
+                        let curr_time = curr_section.times[k]
+                        
+                        let days_string = curr_time.days //days that the class meets
+                        let start_time_string = curr_time.start_time
+                        let end_time_string = curr_time.end_time
+                        
+                        //parse the start time into the proper format. Needs to be in hours (0-23), and minutes (0-60)
+                        let start_time_split = start_time_string.split(separator: ":")
+                        var start_hours : Int = Int(start_time_split[0])!
+                        let start_mins : Int = Int(start_time_split[1].prefix(2))!
+                        let start_am_pm = start_time_split[1].suffix(2)
+                        if start_am_pm == "pm" && start_hours < 12 { start_hours += 12}
+                        
+                        //parse end time manually. Our helper function can't do this since we need minutes as 0-60
+                        let end_time_split = end_time_string.split(separator: ":")
+                        var end_hours : Int = Int(end_time_split[0])!
+                        let end_mins : Int = Int(end_time_split[1].prefix(2))!
+                        let end_am_pm = end_time_split[1].suffix(2)
+                        if end_am_pm == "pm" && end_hours < 12 { end_hours += 12}
+                        
+                        //create the recurrence rule for the event
+                        //The spring semester starts on January 24th, 2022
+                        //The spring semester ends on May 10th, 2022
+                        let semester_end_date = create_date(year: 2022, month: 5, day: 11, hour: 0, minute: 0)
+                        
+                        //find out the days of the week the event will recur
+                        var recurring_days: [EKRecurrenceDayOfWeek] = []
+                        
+                        //build the list containing the days of the week for the reccurence
+                        if days_string.contains("M"){
+                            recurring_days.append(EKRecurrenceDayOfWeek(.monday))
+                        }
+                        if days_string.contains("Tu"){
+                            recurring_days.append(EKRecurrenceDayOfWeek(.tuesday))
+                        }
+                        if days_string.contains("W"){
+                            recurring_days.append(EKRecurrenceDayOfWeek(.wednesday))
+                        }
+                        if days_string.contains("Th"){
+                            recurring_days.append(EKRecurrenceDayOfWeek(.thursday))
+                        }
+                        if days_string.contains("F"){
+                            recurring_days.append(EKRecurrenceDayOfWeek(.friday))
+                        }
+                        if days_string.contains("Sa"){
+                            recurring_days.append(EKRecurrenceDayOfWeek(.saturday))
+                        }
+                        if days_string.contains("Su"){
+                            recurring_days.append(EKRecurrenceDayOfWeek(.sunday))
+                        }
+                       
+                        //set up the recurrence rule
+                        let rule = EKRecurrenceRule(recurrenceWith: EKRecurrenceFrequency.weekly, interval: 1, daysOfTheWeek: recurring_days, daysOfTheMonth: nil, monthsOfTheYear: nil, weeksOfTheYear: nil, daysOfTheYear: nil, setPositions: nil, end: EKRecurrenceEnd(end: semester_end_date))
+                        
+                        var class_start:Date
+                        var class_end:Date
+                        
+                        //create the event depending on which day of the week it first starts on
+                        //first monday of spring semester is 1/24/2022
+                        if days_string.contains("M"){
+                            class_start = create_date(year: 2022, month: 1, day: 24, hour: start_hours, minute: start_mins)
+                            class_end = create_date(year: 2022, month: 1, day: 24, hour: end_hours, minute: end_mins)
+                        }
+                        
+                        //first tuesday of spring semester is 1/25/2022
+                        else if days_string.contains("Tu"){
+                            class_start = create_date(year: 2022, month: 1, day: 25, hour: start_hours, minute: start_mins)
+                            class_end = create_date(year: 2022, month: 1, day: 25, hour: end_hours, minute: end_mins)
+                        }
+                        //first wednesday of spring semester is 1/26/2022
+                        else if days_string.contains("W"){
+                            class_start = create_date(year: 2022, month: 1, day: 26, hour: start_hours, minute: start_mins)
+                            class_end = create_date(year: 2022, month: 1, day: 26, hour: end_hours, minute: end_mins)
+                        }
+                        //first thursday of spring semester is 1/27/2022
+                        else if days_string.contains("Th"){
+                            class_start = create_date(year: 2022, month: 1, day: 27, hour: start_hours, minute: start_mins)
+                            class_end = create_date(year: 2022, month: 1, day: 27, hour: end_hours, minute: end_mins)
+                        }
+                        //first friday of spring semester is 1/28/2022
+                        else if days_string.contains("F"){
+                            class_start = create_date(year: 2022, month: 1, day: 28, hour: start_hours, minute: start_mins)
+                            class_end = create_date(year: 2022, month: 1, day: 28, hour: end_hours, minute: end_mins)
+                        }
+                        //first saturday of spring semester is 1/29/2022
+                        else if days_string.contains("Sa"){
+                            class_start = create_date(year: 2022, month: 1, day: 29, hour: start_hours, minute: start_mins)
+                            class_end = create_date(year: 2022, month: 1, day: 29, hour: end_hours, minute: end_mins)
+                        }
+                        //first sunday of spring semester is 1/30/2022
+                        else {
+                            class_start = create_date(year: 2022, month: 1, day: 30, hour: start_hours, minute: start_mins)
+                            class_end = create_date(year: 2022, month: 1, day: 30, hour: end_hours, minute: end_mins)
+                        }
+                        
+                        //in the notes of the event, include the other information like instructor, room number, etc.
+                        let event_notes = "Professor: \(curr_section.prof) Room: \(curr_time.room) Building: \(curr_time.building)"
+                        
+                        //now that we have the class start and class end, we can create the event and add it to the calendar
+                        let event_name = "\(class_id): \(class_name)"
+                        let event_added = add_to_calandar(title: event_name, start_date: class_start, end_date: class_end, notes: event_notes, rule: rule)
+                        
+                        //add the new event to our event list instance member
+                        calendar_events.append(event_added)
+                    }
+                }
                 schedules[i].saved.toggle_calendar()
-                break
             }
         }
         
     }
     
+    //Removes all added events from the apple calendar
+    func remove_all() {
+        //for each event in the calendar events list, delete all occurences of it it from the calendar
+        for i in 0..<calendar_events.count {
+            delete(event_to_delete: calendar_events[i])
+        }
+        //reset the calendar events list to an empty list
+        calendar_events = []
+    }
+    
+    //Removes a specified event from the user's apple calendar
+    func delete(event_to_delete:EKEvent) {
+        do {
+            try store.remove(event_to_delete, span: EKSpan.futureEvents, commit: true)
+
+        } catch {
+            print("error in removing the event from the calandar")
+        }
+    }
+    
+    //Adds an event with the specified information to the user's calendar
+    func add_to_calandar(title:String, start_date:Date, end_date:Date, notes:String, rule:EKRecurrenceRule) -> EKEvent{
+        let newEvent:EKEvent = EKEvent(eventStore: store)
+        newEvent.title = title
+        newEvent.startDate = start_date
+        newEvent.endDate = end_date
+        newEvent.notes = notes
+        newEvent.calendar = store.defaultCalendarForNewEvents
+        newEvent.recurrenceRules = [rule]
+        do {
+            try store.save(newEvent, span: EKSpan.futureEvents, commit: true)
+
+        } catch {
+            print("Error in adding the event to the calandar")
+        }
+        return newEvent
+    }
+    
+    //Creates a date object with the specified inputs
+    func create_date(year:Int, month:Int, day:Int, hour:Int, minute:Int) -> Date {
+        var dateComponents = DateComponents()
+        dateComponents.year = year
+        dateComponents.month = month
+        dateComponents.day = day
+        dateComponents.hour = hour
+        dateComponents.minute = minute
+        
+        // Create date from components
+        let userCalendar = Calendar(identifier: .gregorian) // since the components above are for Gregorian
+        let output_date = userCalendar.date(from: dateComponents)
+        return output_date!
+    }
 }
 
