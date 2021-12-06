@@ -156,11 +156,12 @@ struct Section : Hashable {
     var course_id : String
     var course_name : String
     var section_id : String
+    var number : String
     var prof : [String]
     var prof_rating : Float
     var avg_gpa : Float
-    var open_seats : Int
-    var waitlist : Int
+    var open_seats : String
+    var waitlist : String
     var credits : Int
     var times : [Times]
 }
@@ -285,7 +286,7 @@ class ScheduleBuilder : ObservableObject {
             do {
                 res = try JSONDecoder().decode([CourseResponse].self, from: data)
             } catch {
-                print("Error!!!!!: \(error)")
+                print("Get_Course Error: \(error)")
                 course_res = nil
             }
             
@@ -316,7 +317,7 @@ class ScheduleBuilder : ObservableObject {
             do {
                 res = try JSONDecoder().decode([SectionResponse].self, from: data)
             } catch {
-                print("Error: \(error)")
+                print("Get_Section Error: \(error)")
             }
             
             guard let json = res else {
@@ -353,7 +354,7 @@ class ScheduleBuilder : ObservableObject {
                 res = try JSONDecoder().decode(CourseGPAResponse.self, from: data)
                 avg_gpa = res!.average_gpa
             } catch {
-                print("Error: Failed to convert \(error)")
+                print("Get_GPA Error: \(error)")
             }
             
             semaphore.signal()
@@ -386,7 +387,7 @@ class ScheduleBuilder : ObservableObject {
                 res = try JSONDecoder().decode(ProfResponse.self, from: data)
                 prof_rating = res!.average_rating
             } catch {
-                print("Error: Failed to convert \(error)")
+                print("Get_Prof Error: \(error)")
             }
             
             semaphore.signal()
@@ -455,6 +456,9 @@ class ScheduleBuilder : ObservableObject {
    
     func parse_time(_ time : String) -> Float {
         // time format "8:50am"
+        if time.count == 0 {
+            return MAXFLOAT
+        }
         let time_split = time.split(separator: ":")
         var hours : Float = Float(time_split[0])!
         let mins : Float = Float(time_split[1].prefix(2))! / 60.0
@@ -499,19 +503,25 @@ class ScheduleBuilder : ObservableObject {
                 times_arr.append(Times(days: meeting.days, room: meeting.room, building: meeting.building, classtype: meeting.classtype, start_time: meeting.start_time, end_time: meeting.end_time, start_time_float: parse_time(meeting.start_time), end_time_float: parse_time(meeting.end_time)))
             }
             
-            sections.append(Section(course_id: course.course_id, course_name: course.name, section_id: section_id, prof: section.instructors, prof_rating: avg_rating, avg_gpa: avg_gpa, open_seats: Int(section.open_seats)!, waitlist: Int(section.waitlist)!, credits: Int(course.credits)!, times: times_arr))
+            sections.append(Section(course_id: course.course_id, course_name: course.name, section_id: section_id, number: section.number, prof: section.instructors, prof_rating: avg_rating, avg_gpa: avg_gpa, open_seats: section.open_seats, waitlist: section.waitlist, credits: Int(course.credits)!, times: times_arr))
         }
         
         return Course(course_id: course.course_id, course_name: course.name, sections: sections)
     }
     
     // This is triggered every time a student picks a new course to add
-    // Returns true if course was successfully added, else false
-    func add_course(_ course_id : String) -> Bool {
+    // Returns 0 (true) on success, else returns one of three error codes:
+    // 1: course
+    func add_course(_ course_id : String) -> Int {
+        if courses.count == 5 {
+            return 3
+        }
+        
         // first make sure that the course isn't already in the course list
+        
         for c in courses {
             if c.course_id == course_id.uppercased() {
-                return false
+                return 2
             }
         }
         
@@ -519,12 +529,14 @@ class ScheduleBuilder : ObservableObject {
         let new_course = build_course(course_id)
         
         if new_course == nil {
-            return false
+            return 1
         }
         
         courses.append(new_course!)
         
-        return true
+        print(new_course!.sections[0].prof_rating)
+        
+        return 0
     }
     
     // This is triggered every time a student removes a course from their course-list
@@ -543,6 +555,11 @@ class ScheduleBuilder : ObservableObject {
     func overlap(a : [Float], b : [Float]) -> Bool {
         // we effectively need to check if two ranges overlap, quickly
         // we have a = [a.start,a.end] and b = [b.start,b.end]
+        
+        // if either time is online/undefined
+        if a[0] == MAXFLOAT || a[1] == MAXFLOAT || b[0] == MAXFLOAT || b[1] == MAXFLOAT {
+            return false
+        }
         
         // case 1, a starts before (or at the same time as) b and ends after (or at the same time as) b
         if a[0] <= b[0] && a[1] >= b[1] {
@@ -625,6 +642,7 @@ class ScheduleBuilder : ObservableObject {
         }
         
         score /= Float(total_credits)
+
         return score
     }
     
@@ -697,25 +715,8 @@ class ScheduleBuilder : ObservableObject {
                 }
             }
             
-        case 6:
-            for s_0 in courses[0].sections {
-                for s_1 in courses[1].sections {
-                    for s_2 in courses[2].sections {
-                        for s_3 in courses[3].sections {
-                            for s_4 in courses[4].sections {
-                                for s_5 in courses[5].sections {
-                                    let sections : [Section] = [s_0, s_1, s_2, s_3, s_4, s_5]
-                                    let schedule : Schedule = Schedule(rank: default_rank, score: get_score(sections), sections: sections)
-                                    if !time_conflict(schedule) {
-                                        schedules.append(schedule)
-                                    }                                }
-                            }
-                        }
-                    }
-                }
-            }
         default:
-            // if they choose more than 7 classes, it becomes O(n^7), where n is the avg number of sections per course
+            // if they choose more than 5 classes, it becomes O(n^6), where n is the avg number of sections per course
             // print("That's too many classes! Ease up!")
             schedules = []
         }
@@ -728,7 +729,7 @@ class ScheduleBuilder : ObservableObject {
         let num_schedules = schedules.count
         for i in 0..<num_schedules {
             schedules[i].rank = i+1
-            print(schedules[i].score)
+            // print(schedules[i].score)
         }
     }
     
