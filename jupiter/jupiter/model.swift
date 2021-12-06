@@ -188,34 +188,7 @@ struct Saved : Hashable {
     var calendar_img : String = "calendar.badge.plus"
     var calendar_text : String = "Add to Calendar"
     var calendar_saved: Bool = false //Keeps track of the state of the calendar toggle. False -> no events on calendar so add them. True-> events are on calendar so remove them
-    
-    mutating func toggle_save(){
-        if save_img == "bookmark" {
-            save_img = "bookmark.fill"
-            save_text = "Unsave"
-            save_padding = (calendar_text == "Remove from Calendar") ? 10 : 40
-        } else {
-            save_img = "bookmark"
-            save_text = "Save"
-            save_padding = (calendar_text == "Remove from Calendar") ? 30 : 50
-        }
-    }
-    
-    mutating func toggle_calendar(){
-        if calendar_img == "calendar.badge.plus" {
-            calendar_img = "calendar.badge.minus"
-            calendar_text = "Remove from Calendar"
-            save_padding = (save_text == "Unsave") ? 10 : 30
-            calendar_saved = true
-        } else {
-            calendar_img = "calendar.badge.plus"
-            calendar_text = "Add to Calendar"
-            save_padding = 50
-            calendar_saved = false
-        }
-
-    }
-}
+ }
 
 
 struct Schedule : Hashable {
@@ -765,7 +738,20 @@ class ScheduleBuilder : ObservableObject {
         for i in 0..<schedules.count {
             // print(schedules[i].id)
             if schedules[i].id == s_id {
-                schedules[i].saved.toggle_save()
+                // now we build a new schedule, but without
+                // build schedule
+                let schedule = schedules[i]
+                var toggled_saved : Saved
+                
+                if schedule.saved.save_img == "bookmark" {
+                    toggled_saved = Saved(save_img: "bookmark.fill", save_text: "Unsave", save_padding: (schedule.saved.calendar_text == "Remove from Calendar") ? 10 : 40, calendar_img: schedule.saved.calendar_img, calendar_text: schedule.saved.calendar_text, calendar_saved: schedule.saved.calendar_saved)
+                } else {
+                    toggled_saved = Saved(save_img: "bookmark", save_text: "Save", save_padding: (schedule.saved.calendar_text == "Remove from Calendar") ? 30 : 50, calendar_img: schedule.saved.calendar_img, calendar_text: schedule.saved.calendar_text, calendar_saved: schedule.saved.calendar_saved)
+                }
+                
+                let schedule_copy : Schedule = Schedule(saved: toggled_saved, rank: schedule.rank, score: schedule.score, sections: schedule.sections)
+                schedules[i] = schedule_copy
+                
                 if needsToBeBookmarked { bookmarks.append(schedules[i]) }
                 break
             }
@@ -776,24 +762,47 @@ class ScheduleBuilder : ObservableObject {
     func toggle_calendar(_ s_id : UUID) {
         for i in 0..<schedules.count {
             if schedules[i].id == s_id {
+                let schedule = schedules[i]
+                var toggled_saved : Saved
+                var schedule_copy : Schedule
                 
-                //if the calendar is toggled to true, delete the events from the calendar and toggle it
-                if schedules[i].saved.calendar_saved == true{
-                    remove_all() //removes all of the calendar events
-                    schedules[i].saved.toggle_calendar()
+                // if the calendar is toggled to true, delete the events from the calendar and toggle it
+                if schedule.saved.calendar_img == "calendar.badge.minus" {
+                    remove_all() // removes all of the calendar events
+                    toggled_saved = Saved(save_img: schedule.saved.save_img, save_text: schedule.saved.save_text, save_padding: 50, calendar_img: "calendar.badge.plus", calendar_text: "Add to Calendar", calendar_saved: !schedule.saved.calendar_saved)
+                    schedule_copy = Schedule(saved: toggled_saved, rank: schedule.rank, score: schedule.score, sections: schedule.sections)
+                    schedules[i] = schedule_copy
+                    // we also need to check if this schedule is in bookmarks, if so, assign the new copy
+                    for idx in 0..<bookmarks.count {
+                        if bookmarks[idx].id == s_id {
+                            bookmarks[idx] = schedule_copy
+                        }
+                    }
                     break
                 }
                 
-                //otherwise if the calendar is toggled to false, add the specified courses to the calendar
+                // otherwise if the calendar is toggled to false, add the specified courses to the calendar
+                
+                toggled_saved = Saved(save_img: schedule.saved.save_img, save_text: schedule.saved.save_text, save_padding: (schedule.saved.save_text == "Unsave") ? 10 : 30, calendar_img: "calendar.badge.minus", calendar_text: "Remove from Calendar", calendar_saved: !schedule.saved.calendar_saved)
+                
+                schedule_copy = Schedule(saved: toggled_saved, rank: schedule.rank, score: schedule.score, sections: schedule.sections)
+                schedules[i] = schedule_copy
+                // we also need to check if this schedule is in bookmarks, if so, assign the new copy
+                for idx in 0..<bookmarks.count {
+                    if bookmarks[idx].id == s_id {
+                        bookmarks[idx] = schedule_copy
+                    }
+                }
+                
                 let sections_to_save = schedules[i].sections
                 
-                //for each section, get the title of the course
+                // for each section, get the title of the course
                 for j in 0..<sections_to_save.count {
                     let curr_section = sections_to_save[j]
                     let class_name = curr_section.course_name
                     let class_id = curr_section.course_id
                     
-                    //for each time struct in the section, create an event with the course name and the times specified within the struct
+                    // for each time struct in the section, create an event with the course name and the times specified within the struct
                     for k in 0..<curr_section.times.count {
                         let curr_time = curr_section.times[k]
                         
@@ -801,29 +810,29 @@ class ScheduleBuilder : ObservableObject {
                         let start_time_string = curr_time.start_time
                         let end_time_string = curr_time.end_time
                         
-                        //parse the start time into the proper format. Needs to be in hours (0-23), and minutes (0-60)
+                        // parse the start time into the proper format. Needs to be in hours (0-23), and minutes (0-60)
                         let start_time_split = start_time_string.split(separator: ":")
                         var start_hours : Int = Int(start_time_split[0])!
                         let start_mins : Int = Int(start_time_split[1].prefix(2))!
                         let start_am_pm = start_time_split[1].suffix(2)
                         if start_am_pm == "pm" && start_hours < 12 { start_hours += 12}
                         
-                        //parse end time manually. Our helper function can't do this since we need minutes as 0-60
+                        // parse end time manually. Our helper function can't do this since we need minutes as 0-60
                         let end_time_split = end_time_string.split(separator: ":")
                         var end_hours : Int = Int(end_time_split[0])!
                         let end_mins : Int = Int(end_time_split[1].prefix(2))!
                         let end_am_pm = end_time_split[1].suffix(2)
                         if end_am_pm == "pm" && end_hours < 12 { end_hours += 12}
                         
-                        //create the recurrence rule for the event
-                        //The spring semester starts on January 24th, 2022
-                        //The spring semester ends on May 10th, 2022
+                        // create the recurrence rule for the event
+                        // The spring semester starts on January 24th, 2022
+                        // The spring semester ends on May 10th, 2022
                         let semester_end_date = create_date(year: 2022, month: 5, day: 11, hour: 0, minute: 0)
                         
-                        //find out the days of the week the event will recur
+                        // find out the days of the week the event will recur
                         var recurring_days: [EKRecurrenceDayOfWeek] = []
                         
-                        //build the list containing the days of the week for the reccurence
+                        // build the list containing the days of the week for the reccurence
                         if days_string.contains("M"){
                             recurring_days.append(EKRecurrenceDayOfWeek(.monday))
                         }
@@ -846,78 +855,77 @@ class ScheduleBuilder : ObservableObject {
                             recurring_days.append(EKRecurrenceDayOfWeek(.sunday))
                         }
                        
-                        //set up the recurrence rule
+                        // set up the recurrence rule
                         let rule = EKRecurrenceRule(recurrenceWith: EKRecurrenceFrequency.weekly, interval: 1, daysOfTheWeek: recurring_days, daysOfTheMonth: nil, monthsOfTheYear: nil, weeksOfTheYear: nil, daysOfTheYear: nil, setPositions: nil, end: EKRecurrenceEnd(end: semester_end_date))
                         
                         var class_start:Date
                         var class_end:Date
                         
-                        //create the event depending on which day of the week it first starts on
-                        //first monday of spring semester is 1/24/2022
+                        // create the event depending on which day of the week it first starts on
+                        // first monday of spring semester is 1/24/2022
                         if days_string.contains("M"){
                             class_start = create_date(year: 2022, month: 1, day: 24, hour: start_hours, minute: start_mins)
                             class_end = create_date(year: 2022, month: 1, day: 24, hour: end_hours, minute: end_mins)
                         }
                         
-                        //first tuesday of spring semester is 1/25/2022
+                        // first tuesday of spring semester is 1/25/2022
                         else if days_string.contains("Tu"){
                             class_start = create_date(year: 2022, month: 1, day: 25, hour: start_hours, minute: start_mins)
                             class_end = create_date(year: 2022, month: 1, day: 25, hour: end_hours, minute: end_mins)
                         }
-                        //first wednesday of spring semester is 1/26/2022
+                        // first wednesday of spring semester is 1/26/2022
                         else if days_string.contains("W"){
                             class_start = create_date(year: 2022, month: 1, day: 26, hour: start_hours, minute: start_mins)
                             class_end = create_date(year: 2022, month: 1, day: 26, hour: end_hours, minute: end_mins)
                         }
-                        //first thursday of spring semester is 1/27/2022
+                        // first thursday of spring semester is 1/27/2022
                         else if days_string.contains("Th"){
                             class_start = create_date(year: 2022, month: 1, day: 27, hour: start_hours, minute: start_mins)
                             class_end = create_date(year: 2022, month: 1, day: 27, hour: end_hours, minute: end_mins)
                         }
-                        //first friday of spring semester is 1/28/2022
+                        // first friday of spring semester is 1/28/2022
                         else if days_string.contains("F"){
                             class_start = create_date(year: 2022, month: 1, day: 28, hour: start_hours, minute: start_mins)
                             class_end = create_date(year: 2022, month: 1, day: 28, hour: end_hours, minute: end_mins)
                         }
-                        //first saturday of spring semester is 1/29/2022
+                        // first saturday of spring semester is 1/29/2022
                         else if days_string.contains("Sa"){
                             class_start = create_date(year: 2022, month: 1, day: 29, hour: start_hours, minute: start_mins)
                             class_end = create_date(year: 2022, month: 1, day: 29, hour: end_hours, minute: end_mins)
                         }
-                        //first sunday of spring semester is 1/30/2022
+                        // first sunday of spring semester is 1/30/2022
                         else {
                             class_start = create_date(year: 2022, month: 1, day: 30, hour: start_hours, minute: start_mins)
                             class_end = create_date(year: 2022, month: 1, day: 30, hour: end_hours, minute: end_mins)
                         }
                         
-                        //in the notes of the event, include the other information like instructor, room number, etc.
+                        // in the notes of the event, include the other information like instructor, room number, etc.
                         let event_notes = "Professor: \(curr_section.prof) Room: \(curr_time.room) Building: \(curr_time.building)"
                         
-                        //now that we have the class start and class end, we can create the event and add it to the calendar
+                        // now that we have the class start and class end, we can create the event and add it to the calendar
                         let event_name = "\(class_id): \(class_name)"
                         let event_added = add_to_calandar(title: event_name, start_date: class_start, end_date: class_end, notes: event_notes, rule: rule)
                         
-                        //add the new event to our event list instance member
+                        // add the new event to our event list instance member
                         calendar_events.append(event_added)
                     }
                 }
-                schedules[i].saved.toggle_calendar()
             }
         }
         
     }
     
-    //Removes all added events from the apple calendar
+    // Removes all added events from the apple calendar
     func remove_all() {
-        //for each event in the calendar events list, delete all occurences of it it from the calendar
+        // for each event in the calendar events list, delete all occurences of it it from the calendar
         for i in 0..<calendar_events.count {
             delete(event_to_delete: calendar_events[i])
         }
-        //reset the calendar events list to an empty list
+        // reset the calendar events list to an empty list
         calendar_events = []
     }
     
-    //Removes a specified event from the user's apple calendar
+    // Removes a specified event from the user's apple calendar
     func delete(event_to_delete:EKEvent) {
         do {
             try store.remove(event_to_delete, span: EKSpan.futureEvents, commit: true)
@@ -927,7 +935,7 @@ class ScheduleBuilder : ObservableObject {
         }
     }
     
-    //Adds an event with the specified information to the user's calendar
+    // Adds an event with the specified information to the user's calendar
     func add_to_calandar(title:String, start_date:Date, end_date:Date, notes:String, rule:EKRecurrenceRule) -> EKEvent{
         let newEvent:EKEvent = EKEvent(eventStore: store)
         newEvent.title = title
@@ -945,7 +953,7 @@ class ScheduleBuilder : ObservableObject {
         return newEvent
     }
     
-    //Creates a date object with the specified inputs
+    // Creates a date object with the specified inputs
     func create_date(year:Int, month:Int, day:Int, hour:Int, minute:Int) -> Date {
         var dateComponents = DateComponents()
         dateComponents.year = year
