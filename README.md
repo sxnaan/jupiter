@@ -1,32 +1,30 @@
-Jupiter: UMD Schedule Builder
+# Jupiter: UMD Schedule Builder
 by Surmud Jamil & Sinaan Younus
 
 Project demo video link: https://umd.zoom.us/rec/play/CRSR2qXCAuNS6FMmjkt-XYT-xkqUlXPvz84rbIpe2CyWR405kOv2TvDryhtYXPZgKNb5rr6HbHfYF5wl.iBhrPHhuWmiFw2Vm?autoplay=true&startTime=1638759537000
 
-What is our application? 
+### What is our application? 
+
 Our final project for CMSC436 is an iOS application called Jupiter. Jupiter is a schedule builder for UMD students that intelligently generates and ranks potential schedules based on professor ratings and average GPA, while also removing duplicates, and ensuring that there are no time conflicts. Our application was developed specifically for a mobile device because it allows Apple Calendar synchronization, which means that the Jupiter will automatically sync a potential schedule with the user’s iPhone calendar. Once the user syncs a schedule, their calendar will have recurring meetings set up every single day for each course they selected at their proper time until the end of the semester.
 
 
 
-Why is it needed? 
+### Why is it needed? 
 At the time of us beginning development on Jupiter, the only schedule builder that the university offered was called Venus, a web application that builds schedules for UMD students as well. However, as you can see from the image above, Venus was a pretty old application with not the best modern or attractive user interface. Although Venus does it’s job of generating potential schedules for UMD students, it does not rank schedules based on how good they are for the student deciding on their courses, as Jupiter does. 
 
 Note: since we began development, the Venus schedule builder was updated recently with a more modern UI, but it still does not include any features that allow users to see the best schedules, as Jupiter does. Venus is also still a web application, which means that users do not have the option of synchronizing their schedule with their mobile calendar, (or any calendar for that matter) as our application does. 
 
-
-
-
 Why is mobile calendar synchronization important? Having one’s schedule present on their mobile device is pretty convenient for an average student. As students are walking around campus with other devices stored away in a backpack, a phone is the most accessible device that people have to quickly view their schedule in order to see where they need to head after they attend a class. Apple’s calendar widget, which shows a user’s calendar events for the given day, also provides quick and easy access for users to view their schedule. This calendar synchronization is why Jupiter is very well suited in a mobile application. 
 
 
-What does our application do?
+### What does our application do?
 The overall layout of our app is broken into 4 different tabs, which we will describe below. Each tab serves a different purpose and the user has the option of switching between tabs, as they would in most apps. 
 
-About
+### About
 
 Our About view displays general information about our application. The main purpose is to inform the user about what the app is and how it can be used. 
 
-Build
+### Build
 The build view displays a search bar where the user can type in the name of classes. This is where the user must enter in the class ID (eg. CMSC436) into the search bar. After the user enters in the name of the class, the user can click on the “Add Course” button which will add the course to the list of courses they are hoping to generate a schedule from (with animation). The name of the course will be displayed with an x to the right, to remove that course if desired (with animation).
 
 After the user has entered the desired number of courses, they are able to generate a schedule by clicking the “Build” button. The build button doubles as a NavigationLink — it will generate all possible schedules for the current combination of classes, and also switches to a new view programmatically pushed onto the view stack.
@@ -35,13 +33,13 @@ This view (called BuildView) starts by listing the selected courses, so they rem
 
 Finally, the Build page also displays a reset button, which will remove all of the courses from the list, and remove all generated schedules — except for those bookmarked earlier.
 
-View
+### View
 The View tab gives details about a selected schedule. As detailed above, it includes information like class location/times, professors (and their average rating), average GPA, open seats, etc. If no schedules have been generated, or no schedule has been selected to view, it displays a message prompting the user to select a schedule (or generate some first).
 
-Saved
+### Saved
 This tab will display the various schedules that the user has bookmarked throughout the course of using the application. This allows the user to build multiple class schedules and have a place to look at the saved schedules that appeal most to them, as these schedules persist through pushes of the reset button.
 
-How did we create the schedule builder? 
+### How did we create the schedule builder? 
 In this section we will discuss more of the technical details regarding how we developed the schedule builder — the core of the app. Before any coding, we had to flush out its general design/architecture from a development perspective. By this, we mean the structure of classes, structs, and other pieces that would have to communicate with each other to function properly. To do so, we used principles of OOP and first broke down what a schedule really is — a list of sections of specific courses. We then broke down courses, which have a name, id, professor, (other instance members), and their own list of sections.
 
 Our app’s primary goal was, for a given list of courses: put together all possible schedules, and rank them according to their average GPA’s and instructor ratings. To do this, our Schedule Builder class had to have a list of courses that the user could add to and remove from. It also needed a list of schedules to store the schedules after we generated them, in order to display them on the front end. Third, it needed a list of schedules that were bookmarked by the user, to save schedules between different resets. 
@@ -67,16 +65,16 @@ As a solution, we added a unique id  (UUID()) member to the struct, and made its
 
 However, this gives rise for potential improvement. Along with fully eliminating this issue, we would like to further research how Swift handles HTTP requests. We want to combine the results of this research with some general algorithmic improvements of our schedule builder to improve the runtime — it’s already relatively quick, but we want a lightning fast alternative to Venus. We also want to look into proportional/relative sizing in Swift, so our app can support more screen sizes (rather than just newer iPhones). With this, we hope to accomplish our mission of being the Venus alternative that UMD students need.
 
-How did we add apple calendar synchronization?
+### How did we add apple calendar synchronization?
 In order to add apple calendar synchronization, we needed to use Apple’s EventKit framework, which is for calendar event scheduling and removal. Since accessing a user’s calendar is a privacy permission, we added the corresponding keys into the Info.plist file which allows us to request calendar permissions for our project.
 
-Learning EventKit
+### Learning EventKit
 The process we used for learning EventKit was a bit unorthodox. Instead of directly testing out EventKit within our app, we first created a test application in order to learn the basic underlying functionality behind the framework. Since EventKit is a much older framework, we were not able to find many modern tutorials on the internet for learning EventKit. Thus, we instead consulted Apple’s Documentation at https://developer.apple.com/documentation/ which proved to be a much better resource for understanding EventKit, rather than pursuing online tutorials. In our test application we learned the basic functionality of EventKit by trying out the basic functions, like saving an event to a calendar, and deleting an event. Once we understood that an event could be added programmatically, we knew that calendar synchronization was viable. 
 
-Challenges With EventKit
+### Challenges With EventKit
 Some challenges we faced when implementing this part of our app included setting up recurring events on the user’s calendar. Setting up recurring events was a challenge because of how we needed to parse the data we received from the get requests into a format that was consistent with EventKit’s functions. For example, a course struct would contain the meeting times as a string containing the days of the week along with the times in AM or PM. The days of the week could be listed as “MWF”, for example. Based on this, we needed to convert a string to represent a list of days along with parsing the time to be in a 24 hour format, with no AM or PM. The next problem needing to be solved with the recurring events was picking a valid start date for the recurring event. Currently, our application works with the Spring 2022 semester, so we needed to hardcode several constants representing the dates of the first week of the semester, along with the last day of classes. We foresee needing to change these constants every semester as the schedule builder would be operating on a new set of courses and dates. Despite these problems we faced, we were always able to come to a solution as our application now successfully adds recurring events to a user’s calendar. 
 
-How did our ideas evolve from the start of the project?
+### How did our ideas evolve from the start of the project?
 In this section, we will discuss how our ideas have evolved since the start of our project. As a recap, our minimal and stretch goals from our project proposal are listed below. The goals that were met have been highlighted in green while the unmet goals have been highlighted in yellow.
 
 Minimal Goals:
@@ -88,7 +86,7 @@ Minimal Goals:
 - generate possible schedules for a given user (new goal)
 - Create a modern, attractive, and user-friendly interface that works well with IOS devices.
 
-Our stretch goals are as follows: 
+Strech goals: 
 - Allow for google/apple calendar synchronization (once the user enters in their schedule, allow it to sync with their calendar for the next semester)
 
 - Automatically generate the optimal schedule for a student. This feature would create an entire schedule, and select the best classes, best professors, at the most optimal times and would allow for no time conflicts or walking conflicts. 
@@ -101,5 +99,5 @@ Additionally, our next unmet minimal goal of allowing the user to input their ow
 
 We do want to emphasize though, that the reason for not meeting these goals was intentional and solely because we felt they deviated from the purpose of our app, and not because of possible laziness. This is evident due to how we made sure to implement our relevant stretch goals and scratch the minimal goals that did not make sense. 
 
-How could our overall application be improved?
+### How could our overall application be improved?
 With that being said, we do have some other ideas for how we could further improve our app, and we want to talk about our ideas for improvement here. As mentioned before, one thing we would love to improve is the runtime of our schedule builder along with sizing our app to make it proportional across different devices and screen sizes. In terms of functionality, one feature that could be added are push notification alerts if a saved schedule’s section is running low on seats. This would be useful for a student by alerting them to register for a course before it is filled up. In addition, we hope to add some persistence in our app by saving our saved schedules in core data. Currently, saved schedules last only for the lifetime of the app being opened/closed. By adding this feature, it will allow our save feature to become more useful. These are just a few of the ideas we have for our application, we ended up learning a lot from this project and we’re definitely considering publishing the app, and adding the above features to it after this course. 
