@@ -1,6 +1,8 @@
 # Jupiter: UMD Schedule Builder
 by Surmud Jamil & Sinaan Younus
 
+Test
+
 Project demo video link: https://umd.zoom.us/rec/play/CRSR2qXCAuNS6FMmjkt-XYT-xkqUlXPvz84rbIpe2CyWR405kOv2TvDryhtYXPZgKNb5rr6HbHfYF5wl.iBhrPHhuWmiFw2Vm?autoplay=true&startTime=1638759537000
 
 ### What is our application? 
