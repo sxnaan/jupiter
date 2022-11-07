@@ -1,5 +1,5 @@
 # Jupiter: UMD Schedule Builder
-by Surmud Jamil & Sinaan Younus
+by Surmud Jamil, Hussain Bin Ammar, and Sinaan Younus
 
 Test
 
